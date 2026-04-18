@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -e
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Check env exists
+if [ ! -f "$ROOT/api/.env.local" ]; then
+  echo "✗ api/.env.local not found — run bin/setup first"
+  exit 1
+fi
+
+# Colors
+BLUE='\033[0;34m'
+GREEN='\033[0;32m'
+RESET='\033[0m'
+
+prefix_output() {
+  local label="$1"
+  local color="$2"
+  while IFS= read -r line; do
+    echo -e "${color}[${label}]${RESET} $line"
+  done
+}
+
+cleanup() {
+  echo ""
+  echo "→ Shutting down..."
+  kill "$API_PID" "$FLUTTER_PID" 2>/dev/null || true
+  wait "$API_PID" "$FLUTTER_PID" 2>/dev/null || true
+  echo "→ Done"
+}
+
+trap cleanup INT TERM EXIT
+
+# Start API
+echo "→ Starting API (Next.js)..."
+cd "$ROOT/api"
+npm run dev 2>&1 | prefix_output "api    " "$BLUE" &
+API_PID=$!
+
+# Start Flutter
+echo "→ Starting Flutter..."
+cd "$ROOT/mobile"
+flutter run 2>&1 | prefix_output "flutter" "$GREEN" &
+FLUTTER_PID=$!
+
+echo ""
+echo "  api     → http://localhost:3000"
+echo "  Press Ctrl+C to stop both"
+echo ""
+
+wait "$API_PID" "$FLUTTER_PID"

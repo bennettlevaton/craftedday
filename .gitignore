@@ -1,5 +1,6 @@
 # API
 api/.env.local
+api/.env.local.example
 api/node_modules
 api/.next
 

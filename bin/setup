@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -e
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+echo "→ CraftedDay setup"
+
+# API env
+if [ -f "$ROOT/api/.env.local" ]; then
+  echo "  ✓ api/.env.local already exists, skipping"
+else
+  cp "$ROOT/api/.env.local.example" "$ROOT/api/.env.local"
+  echo "  ✓ Created api/.env.local — fill in your keys before running bin/dev"
+fi
+
+# Flutter env
+if [ -f "$ROOT/mobile/.env" ]; then
+  echo "  ✓ mobile/.env already exists, skipping"
+else
+  echo "API_BASE_URL=http://localhost:3000" > "$ROOT/mobile/.env"
+  echo "  ✓ Created mobile/.env"
+fi
+
+echo ""
+echo "Done. Edit api/.env.local with your keys, then run: bin/dev"

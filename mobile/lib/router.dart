@@ -4,6 +4,7 @@ import 'screens/player_screen.dart';
 import 'screens/post_session_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/meditation_detail_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/',
@@ -16,10 +17,12 @@ final appRouter = GoRouter(
         final id = state.uri.queryParameters['id'] ?? '';
         final duration =
             int.tryParse(state.uri.queryParameters['duration'] ?? '30') ?? 30;
+        final replay = state.uri.queryParameters['replay'] == '1';
         return PlayerScreen(
           audioUrl: audioUrl,
           id: id,
           duration: duration,
+          replay: replay,
         );
       },
     ),
@@ -28,6 +31,13 @@ final appRouter = GoRouter(
       builder: (_, state) {
         final id = state.uri.queryParameters['id'] ?? '';
         return PostSessionScreen(meditationId: id);
+      },
+    ),
+    GoRoute(
+      path: '/meditation',
+      builder: (_, state) {
+        final id = state.uri.queryParameters['id'] ?? '';
+        return MeditationDetailScreen(id: id);
       },
     ),
     GoRoute(path: '/history', builder: (_, _) => const HistoryScreen()),

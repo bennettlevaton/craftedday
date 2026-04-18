@@ -34,11 +34,10 @@ class ApiService {
 
   Future<GeneratedMeditation> generateMeditation({
     required String prompt,
-    String voiceGender = 'female',
   }) async {
     final res = await _dio.post(
       '/api/meditation/generate',
-      data: {'prompt': prompt, 'voiceGender': voiceGender},
+      data: {'prompt': prompt},
     );
     return GeneratedMeditation.fromJson(res.data as Map<String, dynamic>);
   }
@@ -58,6 +57,11 @@ class ApiService {
     final res = await _dio.get('/api/history');
     final sessions = (res.data['sessions'] as List).cast<Map<String, dynamic>>();
     return sessions.map(Meditation.fromJson).toList();
+  }
+
+  Future<Meditation> getMeditation(String id) async {
+    final res = await _dio.get('/api/meditation/$id');
+    return Meditation.fromJson(res.data as Map<String, dynamic>);
   }
 
   Future<UserStats> getStats() async {

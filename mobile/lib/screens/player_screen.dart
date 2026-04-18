@@ -9,12 +9,14 @@ class PlayerScreen extends StatefulWidget {
   final String audioUrl;
   final String id;
   final int duration;
+  final bool replay;
 
   const PlayerScreen({
     super.key,
     required this.audioUrl,
     required this.id,
     required this.duration,
+    this.replay = false,
   });
 
   @override
@@ -39,7 +41,11 @@ class _PlayerScreenState extends State<PlayerScreen>
 
     _stateSub = _player.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed && mounted) {
-        context.go('/post-session?id=${widget.id}');
+        if (widget.replay) {
+          context.pop();
+        } else {
+          context.go('/post-session?id=${widget.id}');
+        }
       }
     });
   }
@@ -114,22 +120,77 @@ class _PlayerScreenState extends State<PlayerScreen>
                 },
               ),
               const SizedBox(height: 48),
-              StreamBuilder<Duration>(
-                stream: _player.positionStream,
-                builder: (_, snap) {
-                  final pos = snap.data ?? Duration.zero;
-                  return Text(
-                    _format(pos),
-                    style: textTheme.displaySmall?.copyWith(
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
+              StreamBuilder<Duration?>(
+                stream: _player.durationStream,
+                builder: (_, durationSnap) {
+                  final total = durationSnap.data ??
+                      Duration(seconds: widget.duration);
+                  return StreamBuilder<Duration>(
+                    stream: _player.positionStream,
+                    builder: (_, posSnap) {
+                      final pos = posSnap.data ?? Duration.zero;
+                      final totalMs = total.inMilliseconds.toDouble();
+                      final safeTotal = totalMs <= 0 ? 1.0 : totalMs;
+                      final value = pos.inMilliseconds
+                          .clamp(0, total.inMilliseconds)
+                          .toDouble();
+
+                      return Column(
+                        children: [
+                          SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              trackHeight: 2,
+                              activeTrackColor: AppColors.accent,
+                              inactiveTrackColor: AppColors.divider,
+                              thumbColor: AppColors.accent,
+                              overlayColor:
+                                  AppColors.accent.withValues(alpha: 0.15),
+                              thumbShape: const RoundSliderThumbShape(
+                                enabledThumbRadius: 6,
+                              ),
+                              overlayShape: const RoundSliderOverlayShape(
+                                overlayRadius: 16,
+                              ),
+                            ),
+                            child: Slider(
+                              min: 0,
+                              max: safeTotal,
+                              value: value > safeTotal ? safeTotal : value,
+                              onChanged: (v) => _player
+                                  .seek(Duration(milliseconds: v.round())),
+                            ),
+                          ),
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 12),
+                            child: Row(
+                              mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  _format(pos),
+                                  style: textTheme.bodyMedium?.copyWith(
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures()
+                                    ],
+                                  ),
+                                ),
+                                Text(
+                                  _format(total),
+                                  style: textTheme.bodyMedium?.copyWith(
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures()
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _format(Duration(seconds: widget.duration)),
-                style: textTheme.bodyMedium,
               ),
               const Spacer(flex: 2),
               Row(

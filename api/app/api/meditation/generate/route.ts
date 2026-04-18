@@ -14,7 +14,6 @@ export const maxDuration = 60;
 
 type Body = {
   prompt?: string;
-  voiceGender?: VoiceGender;
 };
 
 export async function POST(req: NextRequest) {
@@ -24,8 +23,6 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as Body;
     const prompt = body.prompt?.trim();
-    const voiceGender: VoiceGender =
-      body.voiceGender === "male" ? "male" : "female";
 
     if (!prompt) {
       return NextResponse.json({ error: "prompt required" }, { status: 400 });
@@ -34,15 +31,16 @@ export async function POST(req: NextRequest) {
     const userId = process.env.TEST_USER_ID ?? "test-user-1";
     const targetSeconds = Number(process.env.MEDITATION_TARGET_SECONDS ?? 30);
 
+    const user = await ensureTestUser(userId);
+    const voiceGender: VoiceGender =
+      user.voiceGender === "male" ? "male" : "female";
+
     log(`gen:${reqId}`, "start", {
       userId,
       voiceGender,
       targetSeconds,
       promptLen: prompt.length,
     });
-
-    await ensureTestUser(userId);
-    log(`gen:${reqId}`, "user ensured");
 
     const meditationId = randomUUID();
 
@@ -93,12 +91,20 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function ensureTestUser(userId: string): Promise<void> {
-  const existing = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (existing.length > 0) return;
+async function ensureTestUser(
+  userId: string,
+): Promise<{ voiceGender: string }> {
+  const existing = await db
+    .select({ voiceGender: users.voiceGender })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (existing.length > 0) return existing[0];
+
   await db.insert(users).values({
     id: userId,
     clerkId: userId,
     email: `${userId}@craftedday.local`,
   });
+  return { voiceGender: "female" };
 }

@@ -2,7 +2,7 @@ import { anthropic } from "./claude";
 import { elevenlabs, VOICES, type VoiceGender } from "./elevenlabs";
 import { log } from "./log";
 
-const MODEL = "claude-sonnet-4-6";
+const MODEL = "claude-opus-4-7";
 
 function buildSystemPrompt(targetSeconds: number): string {
   const minutes = Math.round(targetSeconds / 60);
@@ -51,7 +51,13 @@ export async function generateScript(
   const response = await anthropic.messages.create({
     model: MODEL,
     max_tokens: 3000,
-    system: buildSystemPrompt(targetSeconds),
+    system: [
+      {
+        type: "text",
+        text: buildSystemPrompt(targetSeconds),
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     messages: [{ role: "user", content: userPrompt }],
   });
 
@@ -65,6 +71,8 @@ export async function generateScript(
     scriptLen: script.length,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
+    cacheWrite: response.usage.cache_creation_input_tokens ?? 0,
+    cacheRead: response.usage.cache_read_input_tokens ?? 0,
   });
   return script;
 }
@@ -95,14 +103,14 @@ export async function generateAudio(
     voiceGender,
     voiceId,
     scriptLen: script.length,
-    model: "eleven_multilingual_v2",
+    model: "eleven_flash_v2_5",
     voiceSettings,
   });
 
   try {
     const stream = await elevenlabs.textToSpeech.convert(voiceId, {
       text: script,
-      model_id: "eleven_multilingual_v2",
+      model_id: "eleven_flash_v2_5",
       output_format: "mp3_44100_128",
       voice_settings: voiceSettings,
     });

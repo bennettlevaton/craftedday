@@ -4,6 +4,7 @@ class Meditation {
   final String audioUrl;
   final int? duration;
   final int? rating;
+  final String? feedback;
   final DateTime createdAt;
 
   const Meditation({
@@ -12,6 +13,7 @@ class Meditation {
     required this.audioUrl,
     this.duration,
     this.rating,
+    this.feedback,
     required this.createdAt,
   });
 
@@ -22,6 +24,7 @@ class Meditation {
       audioUrl: json['audioUrl'] as String,
       duration: json['duration'] as int?,
       rating: json['rating'] as int?,
+      feedback: json['feedback'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
     );
   }

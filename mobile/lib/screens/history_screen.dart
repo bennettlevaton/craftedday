@@ -116,19 +116,25 @@ class _SessionCard extends StatelessWidget {
   final Meditation session;
   const _SessionCard({required this.session});
 
+  void _openDetail(BuildContext context) {
+    context.push('/meditation?id=${session.id}');
+  }
+
   void _play(BuildContext context) {
     context.push(
       '/player?audioUrl=${Uri.encodeComponent(session.audioUrl)}'
       '&id=${session.id}'
-      '&duration=${session.duration ?? 30}',
+      '&duration=${session.duration ?? 30}'
+      '&replay=1',
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final unrated = session.rating == null;
     return GestureDetector(
-      onTap: () => _play(context),
+      onTap: () => _openDetail(context),
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -151,11 +157,21 @@ class _SessionCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      Text(_formatDuration(session.duration), style: textTheme.bodyMedium),
+                      Text(_formatDuration(session.duration),
+                          style: textTheme.bodyMedium),
                       Text(' · ', style: textTheme.bodyMedium),
-                      Text(_formatTimeAgo(session.createdAt), style: textTheme.bodyMedium),
-                      if (session.rating != null) ...[
-                        const SizedBox(width: 12),
+                      Text(_formatTimeAgo(session.createdAt),
+                          style: textTheme.bodyMedium),
+                      const SizedBox(width: 12),
+                      if (unrated)
+                        Text(
+                          'Rate',
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: AppColors.accent,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        )
+                      else
                         ...List.generate(
                           session.rating!,
                           (_) => const Icon(
@@ -164,16 +180,15 @@ class _SessionCard extends StatelessWidget {
                             color: AppColors.accent,
                           ),
                         ),
-                      ],
                     ],
                   ),
                 ],
               ),
             ),
-            const Icon(
-              Icons.play_arrow_rounded,
+            IconButton(
+              icon: const Icon(Icons.play_arrow_rounded, size: 28),
               color: AppColors.textSecondary,
-              size: 28,
+              onPressed: () => _play(context),
             ),
           ],
         ),

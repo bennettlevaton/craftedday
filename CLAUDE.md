@@ -211,6 +211,9 @@ Current focus: `POST /api/meditation/generate` — the core loop.
 - Variable duration (fixed at MEDITATION_TARGET_SECONDS)
 - Streaming audio
 - Background jobs / retries
+- Background music mix (nice-to-have — would mix ambient track under TTS audio before R2 upload)
+- Wire history screen to real data (currently empty-state only)
+- Voice selection UI (defaults to female Lauren for now)
 
 ---
 
@@ -269,6 +272,21 @@ bin/dev     # boots iOS simulator, starts api + flutter with prefixed logs, Ctrl
 
 ---
 
+## Meditation Style Reference
+
+The tone/structure target comes from a real meditation the user's wife recorded with him. Key qualities to preserve:
+
+- Opens in the middle of a breath, no "welcome" preamble
+- Inclusive language — "we're going to", "let's", "we begin"
+- Anchor a specific body part (belly button, belly, breath)
+- Personal, human asides are welcome
+- Arc: settle → anchor → body work → release → integrate → close
+- Generous silence between phrases (via `<break time="Xs" />`)
+
+The system prompt in `api/lib/meditation.ts:buildSystemPrompt` encodes this.
+
+---
+
 ## Decisions Log
 
 - **Warm light palette (not dark).** User associates meditation with warm, inviting colors — sand, linen, morning sunlight. Rejected dark "deep dusk" proposal.
@@ -277,3 +295,6 @@ bin/dev     # boots iOS simulator, starts api + flutter with prefixed logs, Ctrl
 - **UI-first build order.** User wanted to validate the feel before wiring API integrations.
 - **Post-session rating is its own screen.** Rating is prompted immediately after a session ends while feedback is fresh — not buried in history.
 - **AWS habit, but skipped AWS.** User preferred Next.js/Vercel + Supabase-style services since they already know them; was not set on AWS.
+- **ElevenLabs model: `eleven_multilingual_v2` with tuned voice settings.** Switched from `turbo_v2_5` because turbo felt robotic for meditation. Multilingual v2 is slower but much more expressive. Settings: stability 0.75, similarity 0.75, style 0.15, speaker boost on.
+- **ElevenLabs Starter plan.** User upgraded from Free because Lauren/Evan library voices require paid tier.
+- **Script style is opinionated.** The Claude system prompt enforces inclusive "we" language and no generic "welcome" preamble, modeled on a real meditation script from the user's wife.

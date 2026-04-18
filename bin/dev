@@ -3,14 +3,13 @@ set -e
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Check env exists
 if [ ! -f "$ROOT/api/.env.local" ]; then
   echo "✗ api/.env.local not found — run bin/setup first"
   exit 1
 fi
 
-# Colors
 BLUE='\033[0;34m'
+GREEN='\033[0;32m'
 RESET='\033[0m'
 
 prefix_output() {
@@ -21,24 +20,7 @@ prefix_output() {
   done
 }
 
-cleanup() {
-  echo ""
-  echo "→ Shutting down API..."
-  if [ -n "$API_PID" ]; then
-    pkill -P "$API_PID" 2>/dev/null || true
-    kill "$API_PID" 2>/dev/null || true
-  fi
-  echo "→ Done"
-}
-
-trap cleanup EXIT INT TERM
-
-# Start API in background with prefixed output
-echo "→ Starting API (Next.js)..."
-(cd "$ROOT/api" && npm run dev 2>&1 | prefix_output "api" "$BLUE") &
-API_PID=$!
-
-# Boot an iOS simulator if none is running
+# Boot iOS simulator if none running
 if ! xcrun simctl list devices booted | grep -q Booted; then
   echo "→ Booting iOS simulator..."
   SIM_ID=$(xcrun simctl list devices available -j \
@@ -53,11 +35,34 @@ for r in runtimes:
   open -a Simulator
 fi
 
+cleanup() {
+  echo ""
+  echo "→ Shutting down..."
+  for pid in "$API_PID" "$FLUTTER_PID"; do
+    if [ -n "$pid" ]; then
+      pkill -P "$pid" 2>/dev/null || true
+      kill "$pid" 2>/dev/null || true
+    fi
+  done
+  wait 2>/dev/null || true
+  echo "→ Done"
+}
+
+trap cleanup EXIT INT TERM
+
+echo "→ Starting API..."
+(cd "$ROOT/api" && npm run dev 2>&1 | prefix_output "api    " "$BLUE") &
+API_PID=$!
+
+echo "→ Starting Flutter..."
+# `script -q /dev/null` gives Flutter a pseudo-TTY so it emits clean log lines
+(cd "$ROOT/mobile" && script -q /dev/null flutter run -d iPhone 2>&1 | prefix_output "flutter" "$GREEN") &
+FLUTTER_PID=$!
+
 echo ""
 echo "  api → http://localhost:3000"
-echo "  Flutter runs in foreground — r=hot reload, R=restart, q=quit"
+echo "  Ctrl+C to stop both"
+echo "  (hot reload: save a .dart file — automatic)"
 echo ""
 
-# Flutter in foreground — keeps stdin for hot reload keys
-cd "$ROOT/mobile"
-flutter run
+wait

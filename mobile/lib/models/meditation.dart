@@ -3,6 +3,7 @@ class Meditation {
   final String prompt;
   final String audioUrl;
   final int? duration;
+  final int? rating;
   final DateTime createdAt;
 
   const Meditation({
@@ -10,6 +11,7 @@ class Meditation {
     required this.prompt,
     required this.audioUrl,
     this.duration,
+    this.rating,
     required this.createdAt,
   });
 
@@ -19,7 +21,31 @@ class Meditation {
       prompt: json['prompt'] as String,
       audioUrl: json['audioUrl'] as String,
       duration: json['duration'] as int?,
+      rating: json['rating'] as int?,
       createdAt: DateTime.parse(json['createdAt'] as String),
+    );
+  }
+}
+
+class UserStats {
+  final int streak;
+  final int totalSessions;
+  final double hours;
+  final String favoriteTime;
+
+  const UserStats({
+    required this.streak,
+    required this.totalSessions,
+    required this.hours,
+    required this.favoriteTime,
+  });
+
+  factory UserStats.fromJson(Map<String, dynamic> json) {
+    return UserStats(
+      streak: json['streak'] as int,
+      totalSessions: json['totalSessions'] as int,
+      hours: (json['hours'] as num).toDouble(),
+      favoriteTime: json['favoriteTime'] as String,
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import '../models/meditation.dart';
 
 class GeneratedMeditation {
   final String id;
@@ -40,6 +41,40 @@ class ApiService {
       data: {'prompt': prompt, 'voiceGender': voiceGender},
     );
     return GeneratedMeditation.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<void> rateMeditation({
+    required String id,
+    required int rating,
+    String? feedback,
+  }) async {
+    await _dio.post(
+      '/api/meditation/$id/rate',
+      data: {'rating': rating, 'feedback': feedback},
+    );
+  }
+
+  Future<List<Meditation>> getHistory() async {
+    final res = await _dio.get('/api/history');
+    final sessions = (res.data['sessions'] as List).cast<Map<String, dynamic>>();
+    return sessions.map(Meditation.fromJson).toList();
+  }
+
+  Future<UserStats> getStats() async {
+    final res = await _dio.get('/api/stats');
+    return UserStats.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<String> getVoiceGender() async {
+    final res = await _dio.get('/api/user/preferences');
+    return (res.data['voiceGender'] as String?) ?? 'female';
+  }
+
+  Future<void> setVoiceGender(String voiceGender) async {
+    await _dio.patch(
+      '/api/user/preferences',
+      data: {'voiceGender': voiceGender},
+    );
   }
 }
 

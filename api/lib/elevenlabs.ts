@@ -6,7 +6,7 @@ export const elevenlabs = new ElevenLabsClient({
 
 // Voice IDs are internal — surface only "female"/"male" to users.
 export const VOICES = {
-  female: "DODLEQrClDo8wCz460ld",
+  female: "pjcYQlDFKMbcOUp6F5GD",
   male: "FxUqz8G7NkRtbO7TA7gS",
 } as const;
 

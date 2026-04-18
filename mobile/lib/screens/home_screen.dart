@@ -13,6 +13,22 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _controller = TextEditingController();
   bool _loading = false;
+  String _voiceGender = 'female';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVoicePref();
+  }
+
+  Future<void> _loadVoicePref() async {
+    try {
+      final v = await apiService.getVoiceGender();
+      if (mounted) setState(() => _voiceGender = v);
+    } catch (_) {
+      // fall back to default
+    }
+  }
 
   @override
   void dispose() {
@@ -26,7 +42,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() => _loading = true);
     try {
-      final result = await apiService.generateMeditation(prompt: prompt);
+      final result = await apiService.generateMeditation(
+        prompt: prompt,
+        voiceGender: _voiceGender,
+      );
       if (!mounted) return;
       context.push(
         '/player?audioUrl=${Uri.encodeComponent(result.audioUrl)}'

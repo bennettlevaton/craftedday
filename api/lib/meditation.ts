@@ -69,15 +69,34 @@ export async function generateScript(
   return script;
 }
 
+// Insert a short <break> tag after every sentence-ending punctuation that
+// isn't already followed by one. Slows pacing at the TTS layer without
+// changing Claude's script content.
+function applyPacingBreaks(script: string): string {
+  return script
+    .replace(/([.!?])(?!\s*<break)/g, '$1 <break time="1.2s" />')
+    .replace(/,(?!\s*<break)/g, ', <break time="0.4s" />');
+}
+
 export async function generateAudio(
   script: string,
   voiceGender: VoiceGender,
 ): Promise<Buffer> {
   const started = Date.now();
   const voiceId = VOICES[voiceGender];
+  const voiceSettings = {
+    stability: 1.0,
+    similarity_boost: 0.75,
+    style: 0.0,
+    use_speaker_boost: true,
+    speed: 0.7,
+  };
   log("elevenlabs", "synthesizing audio", {
     voiceGender,
+    voiceId,
     scriptLen: script.length,
+    model: "eleven_multilingual_v2",
+    voiceSettings,
   });
 
   try {
@@ -85,12 +104,7 @@ export async function generateAudio(
       text: script,
       model_id: "eleven_multilingual_v2",
       output_format: "mp3_44100_128",
-      voice_settings: {
-        stability: 0.75,
-        similarity_boost: 0.75,
-        style: 0.15,
-        use_speaker_boost: true,
-      },
+      voice_settings: voiceSettings,
     });
 
     const chunks: Buffer[] = [];

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../services/api_service.dart';
 import '../theme/colors.dart';
 
 class PostSessionScreen extends StatefulWidget {
@@ -14,6 +15,7 @@ class PostSessionScreen extends StatefulWidget {
 class _PostSessionScreenState extends State<PostSessionScreen> {
   final _feedbackController = TextEditingController();
   int _rating = 0;
+  bool _submitting = false;
 
   @override
   void dispose() {
@@ -21,9 +23,26 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
     super.dispose();
   }
 
-  void _submit() {
-    // TODO: submit rating + feedback
-    context.go('/');
+  Future<void> _submit() async {
+    if (_rating == 0 || _submitting) return;
+    setState(() => _submitting = true);
+    try {
+      await apiService.rateMeditation(
+        id: widget.meditationId,
+        rating: _rating,
+        feedback: _feedbackController.text.trim().isEmpty
+            ? null
+            : _feedbackController.text.trim(),
+      );
+      if (!mounted) return;
+      context.go('/');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Couldn\'t save your feedback. ${e.toString()}')),
+      );
+      setState(() => _submitting = false);
+    }
   }
 
   @override
@@ -53,11 +72,12 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
                   final filled = i < _rating;
                   return IconButton(
                     iconSize: 36,
-                    onPressed: () => setState(() => _rating = i + 1),
+                    onPressed: _submitting
+                        ? null
+                        : () => setState(() => _rating = i + 1),
                     icon: Icon(
                       filled ? Icons.star_rounded : Icons.star_outline_rounded,
-                      color:
-                          filled ? AppColors.accent : AppColors.textSecondary,
+                      color: filled ? AppColors.accent : AppColors.textSecondary,
                     ),
                   );
                 }),
@@ -67,6 +87,7 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
                 controller: _feedbackController,
                 maxLines: 4,
                 minLines: 3,
+                enabled: !_submitting,
                 style: textTheme.bodyLarge,
                 decoration: const InputDecoration(
                   hintText: 'Anything you\'d want different? (optional)',
@@ -76,11 +97,30 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _rating > 0 ? _submit : null,
-                  child: const Text('Done'),
+                  onPressed: _rating > 0 && !_submitting ? _submit : null,
+                  child: _submitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.surface,
+                          ),
+                        )
+                      : const Text('Done'),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: _submitting ? null : () => context.go('/'),
+                child: Text(
+                  'Skip',
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
             ],
           ),
         ),

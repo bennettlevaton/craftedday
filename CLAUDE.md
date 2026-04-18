@@ -203,7 +203,12 @@ Current focus: `POST /api/meditation/generate` — the core loop.
 - [x] Flutter: audio playback via just_audio in Player
 - [x] Flutter: home screen "Begin" button wired to ApiService
 - [x] Flutter: Player auto-navigates to post-session on completion
-- [ ] End-to-end test on simulator
+- [x] End-to-end test on simulator
+- [x] POST /api/meditation/:id/rate + Post-session submit
+- [x] GET /api/history + History screen fetches real data
+- [x] GET /api/stats + Profile screen shows real streak/sessions/hours/favorite time
+- [x] GET/PATCH /api/user/preferences + voice toggle in Profile
+- [x] Home uses user's saved voice preference when generating
 
 **Explicitly deferred:**
 - Auth (using hardcoded test user for now)

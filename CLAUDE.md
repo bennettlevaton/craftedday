@@ -2,6 +2,8 @@
 
 AI-powered personalized meditation app. User describes their current mood/situation, Claude generates a custom meditation script, ElevenLabs voices it, user listens.
 
+> **Also read `CODING.md`** for schema, API, Flutter, and general code conventions before making changes.
+
 ## Domain
 
 craftedday.com

@@ -11,7 +11,6 @@ fi
 
 # Colors
 BLUE='\033[0;34m'
-GREEN='\033[0;32m'
 RESET='\033[0m'
 
 prefix_output() {
@@ -24,29 +23,41 @@ prefix_output() {
 
 cleanup() {
   echo ""
-  echo "→ Shutting down..."
-  kill "$API_PID" "$FLUTTER_PID" 2>/dev/null || true
-  wait "$API_PID" "$FLUTTER_PID" 2>/dev/null || true
+  echo "→ Shutting down API..."
+  if [ -n "$API_PID" ]; then
+    pkill -P "$API_PID" 2>/dev/null || true
+    kill "$API_PID" 2>/dev/null || true
+  fi
   echo "→ Done"
 }
 
-trap cleanup INT TERM EXIT
+trap cleanup EXIT INT TERM
 
-# Start API
+# Start API in background with prefixed output
 echo "→ Starting API (Next.js)..."
-cd "$ROOT/api"
-npm run dev 2>&1 | prefix_output "api    " "$BLUE" &
+(cd "$ROOT/api" && npm run dev 2>&1 | prefix_output "api" "$BLUE") &
 API_PID=$!
 
-# Start Flutter
-echo "→ Starting Flutter..."
+# Boot an iOS simulator if none is running
+if ! xcrun simctl list devices booted | grep -q Booted; then
+  echo "→ Booting iOS simulator..."
+  SIM_ID=$(xcrun simctl list devices available -j \
+    | /usr/bin/python3 -c 'import json,sys
+d=json.load(sys.stdin)["devices"]
+runtimes=sorted([r for r in d if "iOS" in r], reverse=True)
+for r in runtimes:
+    for dev in d[r]:
+        if "iPhone" in dev["name"]:
+            print(dev["udid"]); sys.exit(0)')
+  xcrun simctl boot "$SIM_ID"
+  open -a Simulator
+fi
+
+echo ""
+echo "  api → http://localhost:3000"
+echo "  Flutter runs in foreground — r=hot reload, R=restart, q=quit"
+echo ""
+
+# Flutter in foreground — keeps stdin for hot reload keys
 cd "$ROOT/mobile"
-flutter run 2>&1 | prefix_output "flutter" "$GREEN" &
-FLUTTER_PID=$!
-
-echo ""
-echo "  api     → http://localhost:3000"
-echo "  Press Ctrl+C to stop both"
-echo ""
-
-wait "$API_PID" "$FLUTTER_PID"
+flutter run

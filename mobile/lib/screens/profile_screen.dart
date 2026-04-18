@@ -29,7 +29,6 @@ class ProfileScreen extends StatelessWidget {
               const _StatRow(label: 'Current streak', value: '7 days'),
               const _StatRow(label: 'Total sessions', value: '24'),
               const _StatRow(label: 'Hours meditated', value: '4.2'),
-              const _StatRow(label: 'Average rating', value: '4.8'),
               const _StatRow(label: 'Favorite time', value: 'Morning'),
               const SizedBox(height: 48),
               Text(

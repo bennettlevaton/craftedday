@@ -1,11 +1,68 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:just_audio/just_audio.dart';
 import '../theme/colors.dart';
 
-class PlayerScreen extends StatelessWidget {
-  final String prompt;
+class PlayerScreen extends StatefulWidget {
+  final String audioUrl;
+  final String id;
+  final int duration;
 
-  const PlayerScreen({super.key, required this.prompt});
+  const PlayerScreen({
+    super.key,
+    required this.audioUrl,
+    required this.id,
+    required this.duration,
+  });
+
+  @override
+  State<PlayerScreen> createState() => _PlayerScreenState();
+}
+
+class _PlayerScreenState extends State<PlayerScreen>
+    with SingleTickerProviderStateMixin {
+  late final AudioPlayer _player;
+  late final AnimationController _breath;
+  StreamSubscription<PlayerState>? _stateSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _player = AudioPlayer();
+    _breath = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5),
+    )..repeat(reverse: true);
+    _load();
+
+    _stateSub = _player.playerStateStream.listen((state) {
+      if (state.processingState == ProcessingState.completed && mounted) {
+        context.go('/post-session?id=${widget.id}');
+      }
+    });
+  }
+
+  Future<void> _load() async {
+    try {
+      await _player.setUrl(widget.audioUrl);
+      await _player.play();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load audio. ${e.toString()}')),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _stateSub?.cancel();
+    _player.dispose();
+    _breath.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,39 +83,52 @@ class PlayerScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const Spacer(flex: 2),
-              Container(
-                width: 220,
-                height: 220,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      AppColors.accent.withValues(alpha: 0.25),
-                      AppColors.accent.withValues(alpha: 0.05),
-                    ],
-                  ),
-                ),
-                child: Center(
-                  child: Container(
-                    width: 120,
-                    height: 120,
+              AnimatedBuilder(
+                animation: _breath,
+                builder: (_, __) {
+                  final t = _breath.value;
+                  return Container(
+                    width: 220 + (t * 20),
+                    height: 220 + (t * 20),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: AppColors.accent.withValues(alpha: 0.15),
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.accent.withValues(alpha: 0.25 + t * 0.1),
+                          AppColors.accent.withValues(alpha: 0.05),
+                        ],
+                      ),
                     ),
-                  ),
-                ),
+                    child: Center(
+                      child: Container(
+                        width: 120 + (t * 10),
+                        height: 120 + (t * 10),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.accent
+                              .withValues(alpha: 0.15 + t * 0.05),
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 48),
-              Text(
-                '0:00',
-                style: textTheme.displaySmall?.copyWith(
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+              StreamBuilder<Duration>(
+                stream: _player.positionStream,
+                builder: (_, snap) {
+                  final pos = snap.data ?? Duration.zero;
+                  return Text(
+                    _format(pos),
+                    style: textTheme.displaySmall?.copyWith(
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 8),
               Text(
-                '10:00',
+                _format(Duration(seconds: widget.duration)),
                 style: textTheme.bodyMedium,
               ),
               const Spacer(flex: 2),
@@ -67,24 +137,60 @@ class PlayerScreen extends StatelessWidget {
                 children: [
                   _CircleButton(
                     icon: Icons.replay_10,
-                    onPressed: () {},
+                    onPressed: () async {
+                      final pos = _player.position;
+                      await _player.seek(pos - const Duration(seconds: 10));
+                    },
                   ),
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.accent,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.play_arrow, size: 32),
-                      color: AppColors.surface,
-                      onPressed: () {},
-                    ),
+                  StreamBuilder<PlayerState>(
+                    stream: _player.playerStateStream,
+                    builder: (_, snap) {
+                      final playing = snap.data?.playing ?? false;
+                      final processing =
+                          snap.data?.processingState ?? ProcessingState.idle;
+                      final loading = processing == ProcessingState.loading ||
+                          processing == ProcessingState.buffering;
+
+                      return Container(
+                        width: 72,
+                        height: 72,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.accent,
+                        ),
+                        child: loading
+                            ? const Padding(
+                                padding: EdgeInsets.all(24),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.surface,
+                                ),
+                              )
+                            : IconButton(
+                                icon: Icon(
+                                  playing
+                                      ? Icons.pause
+                                      : Icons.play_arrow,
+                                  size: 32,
+                                ),
+                                color: AppColors.surface,
+                                onPressed: () async {
+                                  if (playing) {
+                                    await _player.pause();
+                                  } else {
+                                    await _player.play();
+                                  }
+                                },
+                              ),
+                      );
+                    },
                   ),
                   _CircleButton(
                     icon: Icons.forward_10,
-                    onPressed: () {},
+                    onPressed: () async {
+                      final pos = _player.position;
+                      await _player.seek(pos + const Duration(seconds: 10));
+                    },
                   ),
                 ],
               ),
@@ -94,6 +200,12 @@ class PlayerScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _format(Duration d) {
+    final m = d.inMinutes.toString().padLeft(1, '0');
+    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 }
 

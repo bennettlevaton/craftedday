@@ -39,7 +39,6 @@ craftedday.com
 - Current streak
 - Total hours meditated
 - Total sessions
-- Average rating
 - Favorite time of day (derived from session timestamps)
 
 ### Feedback Loop (Personalization)
@@ -180,6 +179,40 @@ meditations — id, user_id, prompt, script, audio_url, duration, created_at
 8. Stats computation endpoint
 9. RevenueCat subscription flow
 10. Vercel deployment + custom domain (craftedday.com)
+
+## Development Constraints
+
+- **ElevenLabs free plan: ~10 minutes of TTS output per month.** During development, generate short meditations (~30 seconds total output) to avoid burning quota.
+- Controlled via `MEDITATION_TARGET_SECONDS` env var — set to `30` locally, `600` (10 min) in production.
+- Break tags (`<break time="Xs"/>`) still produce audio output and count against quota — keep breaks short during testing.
+
+---
+
+## Active Implementation: Generate Endpoint
+
+Current focus: `POST /api/meditation/generate` — the core loop.
+
+**In progress:**
+- [x] Schema: add voice_gender to users, rating/feedback to meditations
+- [x] ElevenLabs lib: Lauren (female) + Evan (male) voice IDs
+- [x] Push updated schema to PlanetScale (user ran db:push)
+- [x] Ensure test user on generate (auto-upsert inline)
+- [x] Implement generate endpoint (Claude → ElevenLabs → R2 → DB)
+- [x] Flutter: real ApiService calling /api/meditation/generate
+- [x] Flutter: loading state on Home ("Crafting your session...")
+- [x] Flutter: audio playback via just_audio in Player
+- [x] Flutter: home screen "Begin" button wired to ApiService
+- [x] Flutter: Player auto-navigates to post-session on completion
+- [ ] End-to-end test on simulator
+
+**Explicitly deferred:**
+- Auth (using hardcoded test user for now)
+- Feedback history in Claude prompt (no ratings yet)
+- Variable duration (fixed at MEDITATION_TARGET_SECONDS)
+- Streaming audio
+- Background jobs / retries
+
+---
 
 ## Project Status
 

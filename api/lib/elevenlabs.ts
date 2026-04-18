@@ -4,4 +4,10 @@ export const elevenlabs = new ElevenLabsClient({
   apiKey: process.env.ELEVENLABS_API_KEY,
 });
 
-export const VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // Rachel — calm, warm voice
+// Voice IDs are internal — surface only "female"/"male" to users.
+export const VOICES = {
+  female: "DODLEQrClDo8wCz460ld",
+  male: "FxUqz8G7NkRtbO7TA7gS",
+} as const;
+
+export type VoiceGender = keyof typeof VOICES;

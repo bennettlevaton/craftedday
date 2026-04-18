@@ -8,12 +8,19 @@ import 'screens/profile_screen.dart';
 final appRouter = GoRouter(
   initialLocation: '/',
   routes: [
-    GoRoute(path: '/', builder: (_, __) => const HomeScreen()),
+    GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
     GoRoute(
       path: '/player',
       builder: (_, state) {
-        final prompt = state.uri.queryParameters['prompt'] ?? '';
-        return PlayerScreen(prompt: prompt);
+        final audioUrl = state.uri.queryParameters['audioUrl'] ?? '';
+        final id = state.uri.queryParameters['id'] ?? '';
+        final duration =
+            int.tryParse(state.uri.queryParameters['duration'] ?? '30') ?? 30;
+        return PlayerScreen(
+          audioUrl: audioUrl,
+          id: id,
+          duration: duration,
+        );
       },
     ),
     GoRoute(
@@ -23,7 +30,7 @@ final appRouter = GoRouter(
         return PostSessionScreen(meditationId: id);
       },
     ),
-    GoRoute(path: '/history', builder: (_, __) => const HistoryScreen()),
-    GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
+    GoRoute(path: '/history', builder: (_, _) => const HistoryScreen()),
+    GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen()),
   ],
 );

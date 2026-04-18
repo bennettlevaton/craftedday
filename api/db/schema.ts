@@ -4,6 +4,7 @@ export const users = pgTable("users", {
   id: varchar("id", { length: 128 }).primaryKey(),
   clerkId: varchar("clerk_id", { length: 128 }).notNull().unique(),
   email: varchar("email", { length: 255 }).notNull(),
+  voiceGender: varchar("voice_gender", { length: 16 }).default("female").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -14,5 +15,7 @@ export const meditations = pgTable("meditations", {
   script: text("script").notNull(),
   audioUrl: varchar("audio_url", { length: 512 }).notNull(),
   duration: integer("duration"),
+  rating: integer("rating"),
+  feedback: text("feedback"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

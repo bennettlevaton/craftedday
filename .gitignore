@@ -1,0 +1,14 @@
+# API
+api/.env.local
+api/node_modules
+api/.next
+
+# Flutter
+mobile/.dart_tool
+mobile/build
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+
+# General
+.DS_Store
+*.env

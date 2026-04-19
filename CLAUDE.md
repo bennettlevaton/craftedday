@@ -211,6 +211,10 @@ Current focus: `POST /api/meditation/generate` — the core loop.
 - [x] GET /api/stats + Profile screen shows real streak/sessions/hours/favorite time
 - [x] GET/PATCH /api/user/preferences + voice toggle in Profile
 - [x] Home uses user's saved voice preference when generating
+- [x] Schema split: user_profiles table for behavioral data
+- [x] Onboarding flow (name, experience, primary goal)
+- [x] Preference summary: Claude Sonnet distills all rated sessions, cached on profile, refreshed fire-and-forget from /rate
+- [x] Listener context (name, experience, goal, preference summary) injected into generate system prompt
 
 **Explicitly deferred:**
 - Auth (using hardcoded test user for now)

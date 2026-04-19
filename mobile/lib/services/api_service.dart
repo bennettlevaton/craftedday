@@ -69,15 +69,94 @@ class ApiService {
     return UserStats.fromJson(res.data as Map<String, dynamic>);
   }
 
-  Future<String> getVoiceGender() async {
-    final res = await _dio.get('/api/user/preferences');
-    return (res.data['voiceGender'] as String?) ?? 'female';
+  Future<String?> getRandomMusic() async {
+    final res = await _dio.get('/api/music/random');
+    return res.data['url'] as String?;
   }
 
-  Future<void> setVoiceGender(String voiceGender) async {
+  Future<UserMe> getMe() async {
+    final res = await _dio.get('/api/user/me');
+    return UserMe.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<void> updateProfile({
+    String? name,
+    String? experienceLevel,
+    List<String>? primaryGoals,
+    String? primaryGoalCustom,
+    String? voiceGender,
+  }) async {
     await _dio.patch(
-      '/api/user/preferences',
-      data: {'voiceGender': voiceGender},
+      '/api/user/me',
+      data: {
+        if (name != null) 'name': name,
+        if (experienceLevel != null) 'experienceLevel': experienceLevel,
+        if (primaryGoals != null) 'primaryGoals': primaryGoals,
+        if (primaryGoals != null) 'primaryGoalCustom': primaryGoalCustom,
+        if (voiceGender != null) 'voiceGender': voiceGender,
+      },
+    );
+  }
+
+  Future<void> submitOnboarding({
+    required String name,
+    required String experienceLevel,
+    required List<String> primaryGoals,
+    String? primaryGoalCustom,
+  }) async {
+    await _dio.post(
+      '/api/user/onboarding',
+      data: {
+        'name': name,
+        'experienceLevel': experienceLevel,
+        'primaryGoals': primaryGoals,
+        if (primaryGoalCustom != null) 'primaryGoalCustom': primaryGoalCustom,
+      },
+    );
+  }
+}
+
+class UserMe {
+  final bool needsOnboarding;
+  final String? name;
+  final String? experienceLevel;
+  final List<String> primaryGoals;
+  final String? primaryGoalCustom;
+  final String voiceGender;
+
+  const UserMe({
+    required this.needsOnboarding,
+    this.name,
+    this.experienceLevel,
+    this.primaryGoals = const [],
+    this.primaryGoalCustom,
+    required this.voiceGender,
+  });
+
+  factory UserMe.fromJson(Map<String, dynamic> json) => UserMe(
+        needsOnboarding: json['needsOnboarding'] as bool,
+        name: json['name'] as String?,
+        experienceLevel: json['experienceLevel'] as String?,
+        primaryGoals: (json['primaryGoals'] as List?)?.cast<String>() ?? const [],
+        primaryGoalCustom: json['primaryGoalCustom'] as String?,
+        voiceGender: (json['voiceGender'] as String?) ?? 'female',
+      );
+
+  UserMe copyWith({
+    bool? needsOnboarding,
+    String? name,
+    String? experienceLevel,
+    List<String>? primaryGoals,
+    String? primaryGoalCustom,
+    String? voiceGender,
+  }) {
+    return UserMe(
+      needsOnboarding: needsOnboarding ?? this.needsOnboarding,
+      name: name ?? this.name,
+      experienceLevel: experienceLevel ?? this.experienceLevel,
+      primaryGoals: primaryGoals ?? this.primaryGoals,
+      primaryGoalCustom: primaryGoalCustom ?? this.primaryGoalCustom,
+      voiceGender: voiceGender ?? this.voiceGender,
     );
   }
 }

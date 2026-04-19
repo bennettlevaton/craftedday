@@ -13,6 +13,23 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _controller = TextEditingController();
   bool _loading = false;
+  String? _name;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadName();
+  }
+
+  Future<void> _loadName() async {
+    try {
+      final me = await apiService.getMe();
+      if (!mounted) return;
+      setState(() => _name = me.name);
+    } catch (_) {
+      // No greeting by name; not critical.
+    }
+  }
 
   @override
   void dispose() {
@@ -74,7 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   const Spacer(flex: 2),
                   Text(
-                    greeting,
+                    _name == null ? greeting : '$greeting, $_name',
                     style: textTheme.bodyMedium?.copyWith(
                       color: AppColors.textSecondary,
                       fontSize: 15,

@@ -2,19 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
-import { users, meditations } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { meditations } from "@/db/schema";
 import { R2_BUCKET, R2_PUBLIC_URL, r2 } from "@/lib/r2";
 import { generateAudio, generateScript } from "@/lib/meditation";
 import type { VoiceGender } from "@/lib/elevenlabs";
 import { log, logError } from "@/lib/log";
+import { getOrCreateProfile } from "@/lib/user";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-type Body = {
-  prompt?: string;
-};
+type Body = { prompt?: string };
 
 export async function POST(req: NextRequest) {
   const reqId = randomUUID().slice(0, 8);
@@ -31,20 +29,27 @@ export async function POST(req: NextRequest) {
     const userId = process.env.TEST_USER_ID ?? "test-user-1";
     const targetSeconds = Number(process.env.MEDITATION_TARGET_SECONDS ?? 30);
 
-    const user = await ensureTestUser(userId);
+    const profile = await getOrCreateProfile(userId);
     const voiceGender: VoiceGender =
-      user.voiceGender === "male" ? "male" : "female";
+      profile.voiceGender === "male" ? "male" : "female";
 
     log(`gen:${reqId}`, "start", {
       userId,
       voiceGender,
       targetSeconds,
       promptLen: prompt.length,
+      hasPrefs: !!profile.preferenceSummary,
     });
 
     const meditationId = randomUUID();
 
-    const script = await generateScript(prompt, targetSeconds);
+    const script = await generateScript(prompt, targetSeconds, {
+      name: profile.name,
+      experienceLevel: profile.experienceLevel,
+      primaryGoals: profile.primaryGoals ?? [],
+      primaryGoalCustom: profile.primaryGoalCustom,
+      preferenceSummary: profile.preferenceSummary,
+    });
     const audio = await generateAudio(script, voiceGender);
 
     const key = `${userId}/${meditationId}.mp3`;
@@ -84,27 +89,6 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     logError(`gen:${reqId}`, err);
     const message = err instanceof Error ? err.message : "unknown error";
-    return NextResponse.json(
-      { error: message, reqId },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: message, reqId }, { status: 500 });
   }
-}
-
-async function ensureTestUser(
-  userId: string,
-): Promise<{ voiceGender: string }> {
-  const existing = await db
-    .select({ voiceGender: users.voiceGender })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (existing.length > 0) return existing[0];
-
-  await db.insert(users).values({
-    id: userId,
-    clerkId: userId,
-    email: `${userId}@craftedday.local`,
-  });
-  return { voiceGender: "female" };
 }

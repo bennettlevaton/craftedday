@@ -35,7 +35,7 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
             : _feedbackController.text.trim(),
       );
       if (!mounted) return;
-      context.go('/');
+      context.go('/home');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -112,7 +112,7 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
               ),
               const SizedBox(height: 12),
               TextButton(
-                onPressed: _submitting ? null : () => context.go('/'),
+                onPressed: _submitting ? null : () => context.go('/home'),
                 child: Text(
                   'Skip',
                   style: textTheme.bodyMedium?.copyWith(

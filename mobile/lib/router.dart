@@ -1,5 +1,7 @@
 import 'package:go_router/go_router.dart';
+import 'screens/gate_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'screens/player_screen.dart';
 import 'screens/post_session_screen.dart';
 import 'screens/history_screen.dart';
@@ -9,7 +11,9 @@ import 'screens/meditation_detail_screen.dart';
 final appRouter = GoRouter(
   initialLocation: '/',
   routes: [
-    GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
+    GoRoute(path: '/', builder: (_, _) => const GateScreen()),
+    GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
+    GoRoute(path: '/onboarding', builder: (_, _) => const OnboardingScreen()),
     GoRoute(
       path: '/player',
       builder: (_, state) {

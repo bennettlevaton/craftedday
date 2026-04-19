@@ -13,7 +13,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   UserStats? _stats;
-  String _voiceGender = 'female';
+  UserMe? _me;
   bool _loading = true;
 
   @override
@@ -26,12 +26,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final results = await Future.wait([
         apiService.getStats(),
-        apiService.getVoiceGender(),
+        apiService.getMe(),
       ]);
       if (!mounted) return;
       setState(() {
         _stats = results[0] as UserStats;
-        _voiceGender = results[1] as String;
+        _me = results[1] as UserMe;
         _loading = false;
       });
     } catch (_) {
@@ -40,17 +40,84 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<void> _setVoice(String gender) async {
-    if (_voiceGender == gender) return;
-    final previous = _voiceGender;
-    setState(() => _voiceGender = gender);
+  Future<void> _editName() async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _NameSheet(initial: _me?.name ?? ''),
+    );
+    if (result == null) return;
+    await _persist(() => apiService.updateProfile(name: result));
+    if (mounted) setState(() => _me = _me?.copyWith(name: result));
+  }
+
+  Future<void> _editExperience() async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _ExperienceSheet(initial: _me?.experienceLevel),
+    );
+    if (result == null) return;
+    await _persist(() => apiService.updateProfile(experienceLevel: result));
+    if (mounted) {
+      setState(() => _me = _me?.copyWith(experienceLevel: result));
+    }
+  }
+
+  Future<void> _editGoals() async {
+    final result = await showModalBottomSheet<_GoalsResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _GoalsSheet(
+        initialGoals: _me?.primaryGoals ?? const [],
+        initialCustom: _me?.primaryGoalCustom ?? '',
+      ),
+    );
+    if (result == null) return;
+    await _persist(() => apiService.updateProfile(
+          primaryGoals: result.goals,
+          primaryGoalCustom: result.custom,
+        ));
+    if (mounted) {
+      setState(() => _me = _me?.copyWith(
+            primaryGoals: result.goals,
+            primaryGoalCustom: result.custom,
+          ));
+    }
+  }
+
+  Future<void> _editVoice() async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _VoiceSheet(initial: _me?.voiceGender ?? 'female'),
+    );
+    if (result == null) return;
+    await _persist(() => apiService.updateProfile(voiceGender: result));
+    if (mounted) setState(() => _me = _me?.copyWith(voiceGender: result));
+  }
+
+  Future<void> _persist(Future<void> Function() action) async {
     try {
-      await apiService.setVoiceGender(gender);
-    } catch (_) {
+      await action();
+    } catch (e) {
       if (!mounted) return;
-      setState(() => _voiceGender = previous);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Couldn\'t update voice. Try again.')),
+        SnackBar(content: Text('Couldn\'t save. ${e.toString()}')),
       );
     }
   }
@@ -59,6 +126,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final stats = _stats;
+    final me = _me;
 
     return Scaffold(
       appBar: AppBar(
@@ -69,71 +137,126 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
       body: SafeArea(
-        child: Padding(
+        child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 8),
-              Text('Profile', style: textTheme.displayMedium),
-              const SizedBox(height: 40),
-              if (_loading)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: CircularProgressIndicator(
-                      color: AppColors.accent,
-                      strokeWidth: 2,
-                    ),
+          children: [
+            const SizedBox(height: 8),
+            Text('Profile', style: textTheme.displayMedium),
+            const SizedBox(height: 32),
+            _SectionLabel(text: 'Stats'),
+            const SizedBox(height: 4),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: AppColors.accent,
+                    strokeWidth: 2,
                   ),
-                )
-              else ...[
-                _StatRow(
-                  label: 'Current streak',
-                  value: stats == null
-                      ? '—'
-                      : stats.streak == 1
-                          ? '1 day'
-                          : '${stats.streak} days',
                 ),
-                _StatRow(
-                  label: 'Total sessions',
-                  value: stats == null ? '—' : '${stats.totalSessions}',
-                ),
-                _StatRow(
-                  label: 'Hours meditated',
-                  value: stats == null ? '—' : '${stats.hours}',
-                ),
-                _StatRow(
-                  label: 'Favorite time',
-                  value: stats?.favoriteTime ?? '—',
-                ),
-              ],
-              const SizedBox(height: 48),
-              Text(
-                'Voice',
-                style: textTheme.headlineMedium?.copyWith(fontSize: 16),
+              )
+            else ...[
+              _StatRow(
+                label: 'Current streak',
+                value: stats == null
+                    ? '—'
+                    : stats.streak == 1
+                        ? '1 day'
+                        : '${stats.streak} days',
               ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  _VoiceToggle(
-                    label: 'Female',
-                    selected: _voiceGender == 'female',
-                    onTap: () => _setVoice('female'),
-                  ),
-                  const SizedBox(width: 12),
-                  _VoiceToggle(
-                    label: 'Male',
-                    selected: _voiceGender == 'male',
-                    onTap: () => _setVoice('male'),
-                  ),
-                ],
+              _StatRow(
+                label: 'Total sessions',
+                value: stats == null ? '—' : '${stats.totalSessions}',
+              ),
+              _StatRow(
+                label: 'Hours meditated',
+                value: stats == null ? '—' : '${stats.hours}',
+              ),
+              _StatRow(
+                label: 'Favorite time',
+                value: stats?.favoriteTime ?? '—',
               ),
             ],
-          ),
+            const SizedBox(height: 40),
+            _SectionLabel(text: 'Settings'),
+            const SizedBox(height: 4),
+            _EditableRow(
+              label: 'Name',
+              value: me?.name ?? '—',
+              onTap: me == null ? null : _editName,
+            ),
+            _EditableRow(
+              label: 'Experience',
+              value: _formatLevel(me?.experienceLevel),
+              onTap: me == null ? null : _editExperience,
+            ),
+            _EditableRow(
+              label: 'Intentions',
+              value: _formatGoals(me),
+              onTap: me == null ? null : _editGoals,
+            ),
+            _EditableRow(
+              label: 'Voice',
+              value: _formatVoice(me?.voiceGender),
+              onTap: me == null ? null : _editVoice,
+            ),
+            const SizedBox(height: 32),
+          ],
         ),
       ),
+    );
+  }
+
+  String _formatLevel(String? v) {
+    return switch (v) {
+      'beginner' => 'New to it',
+      'intermediate' => 'Some experience',
+      'experienced' => 'Experienced',
+      _ => '—',
+    };
+  }
+
+  String _formatVoice(String? v) {
+    return switch (v) {
+      'female' => 'Female',
+      'male' => 'Male',
+      _ => '—',
+    };
+  }
+
+  String _formatGoals(UserMe? me) {
+    if (me == null || me.primaryGoals.isEmpty) return '—';
+    final labels = me.primaryGoals.map((g) {
+      if (g == 'other') {
+        final c = me.primaryGoalCustom;
+        return c == null || c.isEmpty ? 'Other' : '"$c"';
+      }
+      return switch (g) {
+        'stress' => 'Stress',
+        'sleep' => 'Sleep',
+        'focus' => 'Focus',
+        'anxiety' => 'Anxiety',
+        'general' => 'Curiosity',
+        _ => g,
+      };
+    }).toList();
+    return labels.join(', ');
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String text;
+  const _SectionLabel({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text.toUpperCase(),
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            letterSpacing: 1.2,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
     );
   }
 }
@@ -162,12 +285,112 @@ class _StatRow extends StatelessWidget {
   }
 }
 
-class _VoiceToggle extends StatelessWidget {
+class _EditableRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final VoidCallback? onTap;
+
+  const _EditableRow({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Row(
+          children: [
+            Text(label, style: textTheme.bodyLarge),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                value,
+                textAlign: TextAlign.right,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.bodyLarge?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.textSecondary,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────── Bottom sheet modals ───────
+
+class _SheetScaffold extends StatelessWidget {
+  final String title;
+  final Widget child;
+  final VoidCallback? onSave;
+  final bool saveEnabled;
+
+  const _SheetScaffold({
+    required this.title,
+    required this.child,
+    required this.onSave,
+    this.saveEnabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.divider,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(title, style: textTheme.headlineMedium),
+              const SizedBox(height: 20),
+              child,
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: saveEnabled ? onSave : null,
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-
-  const _VoiceToggle({
+  const _Chip({
     required this.label,
     required this.selected,
     required this.onTap,
@@ -178,21 +401,260 @@ class _VoiceToggle extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
         decoration: BoxDecoration(
-          color: selected ? AppColors.accent : AppColors.surface,
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(100),
           border: Border.all(
             color: selected ? AppColors.accent : AppColors.divider,
+            width: selected ? 1.5 : 1,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? AppColors.surface : AppColors.textPrimary,
+            color: selected ? AppColors.accent : AppColors.textPrimary,
             fontWeight: FontWeight.w500,
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _NameSheet extends StatefulWidget {
+  final String initial;
+  const _NameSheet({required this.initial});
+
+  @override
+  State<_NameSheet> createState() => _NameSheetState();
+}
+
+class _NameSheetState extends State<_NameSheet> {
+  late final TextEditingController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = TextEditingController(text: widget.initial);
+    _c.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      title: 'What should we call you?',
+      saveEnabled: _c.text.trim().isNotEmpty,
+      onSave: () => Navigator.of(context).pop(_c.text.trim()),
+      child: TextField(
+        controller: _c,
+        autofocus: true,
+        style: Theme.of(context).textTheme.bodyLarge,
+        decoration: const InputDecoration(hintText: 'Your name'),
+      ),
+    );
+  }
+}
+
+class _ExperienceSheet extends StatefulWidget {
+  final String? initial;
+  const _ExperienceSheet({required this.initial});
+
+  @override
+  State<_ExperienceSheet> createState() => _ExperienceSheetState();
+}
+
+class _ExperienceSheetState extends State<_ExperienceSheet> {
+  String? _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.initial;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const options = [
+      ('beginner', 'New to it'),
+      ('intermediate', 'Some experience'),
+      ('experienced', 'Experienced'),
+    ];
+    return _SheetScaffold(
+      title: 'How familiar are you with meditation?',
+      saveEnabled: _selected != null,
+      onSave: () => Navigator.of(context).pop(_selected),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: options
+            .map((opt) => _Chip(
+                  label: opt.$2,
+                  selected: _selected == opt.$1,
+                  onTap: () => setState(() => _selected = opt.$1),
+                ))
+            .toList(),
+      ),
+    );
+  }
+}
+
+class _GoalsResult {
+  final List<String> goals;
+  final String? custom;
+  _GoalsResult(this.goals, this.custom);
+}
+
+class _GoalsSheet extends StatefulWidget {
+  final List<String> initialGoals;
+  final String initialCustom;
+  const _GoalsSheet({
+    required this.initialGoals,
+    required this.initialCustom,
+  });
+
+  @override
+  State<_GoalsSheet> createState() => _GoalsSheetState();
+}
+
+class _GoalsSheetState extends State<_GoalsSheet> {
+  final Set<String> _goals = {};
+  late final TextEditingController _other;
+  final _otherFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _goals.addAll(widget.initialGoals);
+    _other = TextEditingController(text: widget.initialCustom);
+    _other.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _other.dispose();
+    _otherFocus.dispose();
+    super.dispose();
+  }
+
+  bool get _valid {
+    if (_goals.isEmpty) return false;
+    if (_goals.contains('other') && _other.text.trim().isEmpty) return false;
+    return true;
+  }
+
+  void _toggle(String v) {
+    setState(() {
+      if (_goals.contains(v)) {
+        _goals.remove(v);
+        if (v == 'other') {
+          _other.clear();
+          _otherFocus.unfocus();
+        }
+      } else {
+        _goals.add(v);
+        if (v == 'other') {
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _otherFocus.requestFocus(),
+          );
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const options = [
+      ('stress', 'Stress'),
+      ('sleep', 'Sleep'),
+      ('focus', 'Focus'),
+      ('anxiety', 'Anxiety'),
+      ('general', 'Just curious'),
+      ('other', 'Other'),
+    ];
+    return _SheetScaffold(
+      title: 'What brings you here?',
+      saveEnabled: _valid,
+      onSave: () => Navigator.of(context).pop(
+        _GoalsResult(
+          _goals.toList(),
+          _goals.contains('other') ? _other.text.trim() : null,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: options
+                .map((opt) => _Chip(
+                      label: opt.$2,
+                      selected: _goals.contains(opt.$1),
+                      onTap: () => _toggle(opt.$1),
+                    ))
+                .toList(),
+          ),
+          if (_goals.contains('other')) ...[
+            const SizedBox(height: 16),
+            TextField(
+              controller: _other,
+              focusNode: _otherFocus,
+              style: Theme.of(context).textTheme.bodyLarge,
+              decoration: const InputDecoration(
+                hintText: 'In your own words...',
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _VoiceSheet extends StatefulWidget {
+  final String initial;
+  const _VoiceSheet({required this.initial});
+
+  @override
+  State<_VoiceSheet> createState() => _VoiceSheetState();
+}
+
+class _VoiceSheetState extends State<_VoiceSheet> {
+  late String _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.initial;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      title: 'Voice',
+      onSave: () => Navigator.of(context).pop(_selected),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          _Chip(
+            label: 'Female',
+            selected: _selected == 'female',
+            onTap: () => setState(() => _selected = 'female'),
+          ),
+          _Chip(
+            label: 'Male',
+            selected: _selected == 'male',
+            onTap: () => setState(() => _selected = 'male'),
+          ),
+        ],
       ),
     );
   }

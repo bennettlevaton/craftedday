@@ -1,14 +1,86 @@
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { anthropic } from "./claude";
 import { elevenlabs, VOICES, type VoiceGender } from "./elevenlabs";
 import { log } from "./log";
+import { db } from "./db";
+import { meditations, userProfiles } from "@/db/schema";
 
-const MODEL = "claude-opus-4-7";
+const SCRIPT_MODEL = "claude-opus-4-7";
+const SUMMARY_MODEL = "claude-sonnet-4-6";
 
-function buildSystemPrompt(targetSeconds: number): string {
+type ListenerContext = {
+  name: string | null;
+  experienceLevel: string | null;
+  primaryGoals: string[];
+  primaryGoalCustom: string | null;
+  preferenceSummary: string | null;
+};
+
+const GOAL_BIAS: Record<string, string> = {
+  stress: "bias toward breath and grounding",
+  sleep: "softer pacing, lower energy, less stimulation",
+  focus: "alertness and presence, not drowsiness",
+  anxiety: "settling the nervous system, steady slow cues",
+  general: "balanced, let the listener's input guide the shape",
+};
+
+function buildListenerContextBlock(ctx: ListenerContext): string {
+  const hasGoals = ctx.primaryGoals.length > 0;
+  if (
+    !ctx.name &&
+    !ctx.experienceLevel &&
+    !hasGoals &&
+    !ctx.preferenceSummary
+  ) {
+    return "";
+  }
+
+  const lines: string[] = ["LISTENER CONTEXT"];
+  if (ctx.name) {
+    lines.push(`- Name: ${ctx.name} (use sparingly, only in natural moments)`);
+  }
+  if (ctx.experienceLevel) {
+    const label = {
+      beginner:
+        "new to meditation — keep guidance concrete, explain less-common cues",
+      intermediate: "some experience — assume familiarity with basic cues",
+      experienced: "experienced — you can be more subtle, less instructional",
+    }[ctx.experienceLevel] ?? ctx.experienceLevel;
+    lines.push(`- Experience: ${label}`);
+  }
+  if (hasGoals) {
+    const structured = ctx.primaryGoals.filter((g) => g !== "other");
+    const biases = structured
+      .map((g) => GOAL_BIAS[g])
+      .filter(Boolean);
+
+    const parts: string[] = [];
+    if (structured.length > 0) {
+      parts.push(structured.join(", "));
+    }
+    if (ctx.primaryGoals.includes("other") && ctx.primaryGoalCustom) {
+      parts.push(`also: "${ctx.primaryGoalCustom}"`);
+    }
+    lines.push(`- Primary intentions: ${parts.join(" · ")}`);
+    if (biases.length > 0) {
+      lines.push(`  (${biases.join("; ")})`);
+    }
+  }
+  if (ctx.preferenceSummary) {
+    lines.push(
+      "",
+      "PREFERENCE PROFILE (from past sessions)",
+      ctx.preferenceSummary,
+    );
+  }
+  return lines.join("\n") + "\n\n";
+}
+
+function buildSystemPrompt(targetSeconds: number, listenerBlock: string): string {
   const minutes = Math.round(targetSeconds / 60);
   const label = targetSeconds < 60 ? `${targetSeconds} seconds` : `${minutes} minute`;
 
-  return `You are writing a guided meditation script for audio narration. Write in a warm, intimate, personal tone — as if you are meditating alongside the listener, not instructing them from above.
+  return `${listenerBlock}You are writing a guided meditation script for audio narration. Write in a warm, intimate, personal tone — as if you are meditating alongside the listener, not instructing them from above.
 
 Target total duration: ${label} (narration + silences combined).
 
@@ -44,17 +116,23 @@ Write as if you are a real person sitting cross-legged next to the listener, spe
 export async function generateScript(
   userPrompt: string,
   targetSeconds: number,
+  listenerContext: ListenerContext,
 ): Promise<string> {
   const started = Date.now();
-  log("claude", "generating script", { targetSeconds, promptLen: userPrompt.length });
+  const listenerBlock = buildListenerContextBlock(listenerContext);
+  log("claude", "generating script", {
+    targetSeconds,
+    promptLen: userPrompt.length,
+    hasListenerContext: listenerBlock.length > 0,
+  });
 
   const response = await anthropic.messages.create({
-    model: MODEL,
+    model: SCRIPT_MODEL,
     max_tokens: 3000,
     system: [
       {
         type: "text",
-        text: buildSystemPrompt(targetSeconds),
+        text: buildSystemPrompt(targetSeconds, listenerBlock),
         cache_control: { type: "ephemeral" },
       },
     ],
@@ -77,9 +155,6 @@ export async function generateScript(
   return script;
 }
 
-// Insert a short <break> tag after every sentence-ending punctuation that
-// isn't already followed by one. Slows pacing at the TTS layer without
-// changing Claude's script content.
 function applyPacingBreaks(script: string): string {
   return script
     .replace(/([.!?])(?!\s*<break)/g, '$1 <break time="1.2s" />')
@@ -139,4 +214,76 @@ export async function generateAudio(
     }
     throw err;
   }
+}
+
+export async function refreshPreferenceSummary(userId: string): Promise<void> {
+  const started = Date.now();
+
+  const sessions = await db
+    .select({
+      prompt: meditations.prompt,
+      rating: meditations.rating,
+      feedback: meditations.feedback,
+      createdAt: meditations.createdAt,
+    })
+    .from(meditations)
+    .where(
+      and(eq(meditations.userId, userId), isNotNull(meditations.rating)),
+    )
+    .orderBy(desc(meditations.createdAt));
+
+  if (sessions.length === 0) {
+    log("summary", "no rated sessions yet, skipping", { userId });
+    return;
+  }
+
+  const now = Date.now();
+  const blocks = sessions.map((s, i) => {
+    const days = Math.max(
+      0,
+      Math.floor((now - new Date(s.createdAt).getTime()) / 86_400_000),
+    );
+    const recency = i < 10 ? " (RECENT — weight heavily)" : "";
+    return `[Session ${i + 1} · ${days}d ago · ${s.rating}/5${recency}] "${s.prompt}"
+  Feedback: ${s.feedback?.trim() || "(none)"}`;
+  });
+
+  const response = await anthropic.messages.create({
+    model: SUMMARY_MODEL,
+    max_tokens: 500,
+    system: `You are building a meditation preference profile from a user's rated sessions.
+
+Weight the 10 most recent sessions heavily; use earlier sessions as background context.
+
+Produce 100-150 words in second person ("You respond well to..."). Cover:
+- Styles and techniques they respond well to
+- What to avoid
+- Recurring themes in their prompts
+- Notable patterns in how they rate sessions
+
+Output ONLY the profile paragraph. No headers, no bullets, no preamble.`,
+    messages: [{ role: "user", content: blocks.join("\n\n") }],
+  });
+
+  const block = response.content[0];
+  if (block.type !== "text") {
+    log("summary", "unexpected response, skipping", { userId });
+    return;
+  }
+
+  await db
+    .update(userProfiles)
+    .set({
+      preferenceSummary: block.text.trim(),
+      preferenceSummaryUpdatedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(userProfiles.userId, userId));
+
+  log("summary", "updated", {
+    userId,
+    sessionCount: sessions.length,
+    ms: Date.now() - started,
+    summaryLen: block.text.length,
+  });
 }

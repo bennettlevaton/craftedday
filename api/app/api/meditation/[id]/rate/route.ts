@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { meditations } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { logError } from "@/lib/log";
+import { refreshPreferenceSummary } from "@/lib/meditation";
 
 export const runtime = "nodejs";
 
@@ -34,6 +35,11 @@ export async function POST(
       .update(meditations)
       .set({ rating, feedback })
       .where(and(eq(meditations.id, id), eq(meditations.userId, userId)));
+
+    // Fire-and-forget — refresh preference profile with this new data
+    void refreshPreferenceSummary(userId).catch((err) =>
+      logError("rate:refresh", err),
+    );
 
     return NextResponse.json({ ok: true });
   } catch (err) {

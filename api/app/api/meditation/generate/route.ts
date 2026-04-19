@@ -10,7 +10,7 @@ import { log, logError } from "@/lib/log";
 import { getOrCreateProfile } from "@/lib/user";
 
 export const runtime = "nodejs";
-export const maxDuration = 900; // 15 min
+export const maxDuration = 800;
 
 type Body = {
   prompt?: string;

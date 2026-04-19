@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/music_service.dart';
@@ -290,6 +291,7 @@ class _LoadingOverlayState extends State<_LoadingOverlay>
     with TickerProviderStateMixin {
   late final AnimationController _breathController;
   late final AnimationController _fadeController;
+  AudioPlayer? _cuePlayer;
   int _cueIndex = 0;
 
   static const _cues = [
@@ -325,17 +327,48 @@ class _LoadingOverlayState extends State<_LoadingOverlay>
       duration: const Duration(milliseconds: 600),
     )..value = 1;
 
+    _initCuePlayer();
     _scheduleCue();
   }
 
+  Future<void> _initCuePlayer() async {
+    try {
+      final me = await apiService.getMe();
+      final gender = me.voiceGender == 'male' ? 'male' : 'female';
+      _cuePlayer = AudioPlayer();
+      await _cuePlayer!.setVolume(1.0);
+      await _playCue(gender, 0);
+    } catch (_) {
+      // Non-fatal — cues play silently if audio fails
+    }
+  }
+
+  Future<void> _playCue(String gender, int index) async {
+    if (_cuePlayer == null || !mounted) return;
+    try {
+      final path =
+          'assets/audio/breathing/$gender/cue_${index.toString().padLeft(2, '0')}.mp3';
+      await _cuePlayer!.setAsset(path);
+      await _cuePlayer!.play();
+    } catch (_) {}
+  }
+
   Future<void> _scheduleCue() async {
+    String gender = 'female';
+    try {
+      final me = await apiService.getMe();
+      gender = me.voiceGender == 'male' ? 'male' : 'female';
+    } catch (_) {}
+
     while (mounted) {
       await Future.delayed(const Duration(seconds: 6));
       if (!mounted) return;
       await _fadeController.reverse();
       if (!mounted) return;
-      setState(() => _cueIndex = (_cueIndex + 1) % _cues.length);
+      final nextIndex = (_cueIndex + 1) % _cues.length;
+      setState(() => _cueIndex = nextIndex);
       _fadeController.forward();
+      _playCue(gender, nextIndex);
     }
   }
 
@@ -343,6 +376,7 @@ class _LoadingOverlayState extends State<_LoadingOverlay>
   void dispose() {
     _breathController.dispose();
     _fadeController.dispose();
+    _cuePlayer?.dispose();
     super.dispose();
   }
 

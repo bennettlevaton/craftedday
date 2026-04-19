@@ -243,15 +243,13 @@ Current focus: `POST /api/meditation/generate` — the core loop.
 - [x] Post-session rating screen UI (static)
 - [x] History screen UI (static with mock data)
 - [x] Profile/Stats screen UI (static with mock data)
-- [ ] Schema additions (voice_gender, rating, feedback)
-- [ ] Core generate endpoint implementation
-- [ ] Audio playback wired in Player screen
-- [ ] Auth integration (Clerk) in both Flutter + API
-- [ ] Wire history screen to real data
-- [ ] Rating + feedback endpoint
-- [ ] Stats computation
-- [ ] RevenueCat subscription flow
-- [ ] Vercel deployment
+- [x] Everything above shipped
+- [x] Vercel deployed (craftedday.com)
+- [x] Breathing cue audio generated (female + male, in mobile/assets/audio/breathing/)
+- [ ] Wire breathing cue audio playback in loading screen
+- [ ] Auth (Clerk) — still test-user-1
+- [ ] Generation speed for long sessions (streaming approach TBD)
+- [ ] RevenueCat subscriptions
 
 ---
 

@@ -22,7 +22,7 @@ class GeneratedMeditation {
 }
 
 class ApiService {
-  static const String _baseUrl = 'http://localhost:3000';
+  static const String _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:3000');
 
   final Dio _dio = Dio(
     BaseOptions(

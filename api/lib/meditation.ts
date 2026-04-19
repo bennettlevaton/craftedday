@@ -270,7 +270,12 @@ SILENCE
 - Use <break time="Xs" /> tags. Single tags cap at ~3s — stack for longer.
 - Every sentence ends with at least one break tag.
 - Vary durations: 1-2s within a thought, 3s between sentences, 6-9s after body instructions, 12-15s at transitions.
-- NEVER put a break between an inhale instruction and its paired exhale — the listener will freeze wondering what to do. The full breath cycle is one unit: "breathe in <break time="4s"/> and breathe out <break time="6s"/>" is correct. "breathe in for 4 counts <break time="10s"/> now breathe out" is wrong.
+- BREATH CYCLES ARE ONE CONTINUOUS UNIT. A break after "breathe in" means the listener IS breathing in during that silence. The next words must tell them what to do next — immediately. Never stack multiple breaks between an inhale and its exhale instruction. The listener should never wonder "do I hold here?"
+  CORRECT: "Breathe in slowly. <break time="4s"/> And breathe out. <break time="6s"/>"
+  CORRECT: "Breathe in... <break time="3s"/> ...and let it out. <break time="5s"/>"
+  WRONG: "Breathe in. <break time="3s"/> <break time="3s"/> <break time="3s"/> Now breathe out." (9s gap = confusion)
+  WRONG: "Take a deep breath in. <break time="3s"/> <break time="3s"/> Exhale." (same problem)
+  After any inhale instruction, the very next words after the break must be the exhale cue.
 
 OUTPUT
 - Script text with break tags only. No title, headers, or explanation.`;
@@ -350,14 +355,14 @@ export async function generateAudio(
     voiceGender,
     voiceId,
     scriptLen: script.length,
-    model: "eleven_flash_v2_5",
+    model: "eleven_turbo_v2_5",
     voiceSettings,
   });
 
   try {
     const stream = await elevenlabs.textToSpeech.convert(voiceId, {
       text: scriptWithTail,
-      model_id: "eleven_flash_v2_5",
+      model_id: "eleven_turbo_v2_5",
       output_format: "mp3_44100_128",
       voice_settings: voiceSettings,
     });

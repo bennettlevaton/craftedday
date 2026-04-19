@@ -80,6 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
         '&duration=${result.duration}',
       );
     } catch (e) {
+      MusicService.instance.stop();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Something went wrong. ${e.toString()}')),

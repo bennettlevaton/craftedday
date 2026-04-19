@@ -30,6 +30,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   late final AudioPlayer _player;
   late final AnimationController _breath;
   StreamSubscription<PlayerState>? _stateSub;
+  bool _dragging = false;
+  double _dragValue = 0;
 
   @override
   void initState() {
@@ -82,6 +84,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _stateSub?.cancel();
     _player.dispose();
     _breath.dispose();
+    MusicService.instance.stop();
     super.dispose();
   }
 
@@ -170,9 +173,21 @@ class _PlayerScreenState extends State<PlayerScreen>
                             child: Slider(
                               min: 0,
                               max: safeTotal,
-                              value: value > safeTotal ? safeTotal : value,
-                              onChanged: (v) => _player
-                                  .seek(Duration(milliseconds: v.round())),
+                              value: _dragging
+                                  ? _dragValue.clamp(0, safeTotal)
+                                  : value > safeTotal ? safeTotal : value,
+                              onChangeStart: (v) => setState(() {
+                                _dragging = true;
+                                _dragValue = v;
+                              }),
+                              onChanged: (v) =>
+                                  setState(() => _dragValue = v),
+                              onChangeEnd: (v) {
+                                setState(() => _dragging = false);
+                                _player.seek(
+                                  Duration(milliseconds: v.round()),
+                                );
+                              },
                             ),
                           ),
                           Padding(

@@ -5,7 +5,8 @@ import { log } from "./log";
 import { db } from "./db";
 import { meditations, userProfiles } from "@/db/schema";
 
-const SCRIPT_MODEL = "claude-sonnet-4-6";
+const PLANNER_MODEL = "claude-haiku-4-5";   // fast planner with bounded thinking
+const WRITER_MODEL = "claude-opus-4-7";     // best writer, no thinking overhead
 const SUMMARY_MODEL = "claude-sonnet-4-6";
 
 type ListenerContext = {
@@ -184,6 +185,97 @@ OUTPUT
 Write as if you are a real person sitting cross-legged next to the listener, speaking from your own practice.`;
 }
 
+async function generatePlan(
+  userPrompt: string,
+  targetSeconds: number,
+  listenerBlock: string,
+  timeOfDay: string,
+): Promise<string> {
+  const started = Date.now();
+  const minutes = Math.round(targetSeconds / 60);
+  const wordsTarget = Math.round((targetSeconds / 60) * 140 * 0.60);
+
+  const plannerPrompt = `${listenerBlock}You are planning a guided meditation session. Output ONLY valid JSON — no markdown, no explanation.
+
+Listener input: "${userPrompt}"
+Time of day: ${timeOfDay}
+Target duration: ${minutes} minutes (${targetSeconds} seconds)
+Effective speaking rate: ~140 wpm. Target ~${wordsTarget} total words of narration.
+
+Output this exact JSON:
+{
+  "opening_context": "how to meet the listener — their state, energy, what they need immediately",
+  "technique": "1-2 specific techniques (e.g. box breathing, body scan, noting, visualization)",
+  "anchor": "specific anchor point (e.g. belly button, chest rise, feet on floor)",
+  "breathing_pattern": "specific breath instruction for this session",
+  "imagery": "specific release and transformation imagery to use",
+  "arc": [
+    {
+      "section": "section name",
+      "duration_seconds": 0,
+      "words": 0,
+      "guidance_density": "high | medium | low | silent",
+      "notes": "what specifically happens — be concrete"
+    }
+  ]
+}
+
+Rules:
+- arc duration_seconds must sum to EXACTLY ${targetSeconds}
+- words = Math.round(duration_seconds * (140/60)) for high density, * 0.6 for medium, * 0.2 for low, 0-10 for silent
+- Total words across arc must be ~${wordsTarget}
+- Must include: settle (body scan), release, envision_opposite (the transformed version of themselves), return, close
+- Include at least one silent section (60-90s) for independent breathing
+- Opening density is always HIGH — meet them where they are`;
+
+  const res = await anthropic.messages.create({
+    model: PLANNER_MODEL,
+    max_tokens: 4000,
+    messages: [{ role: "user", content: plannerPrompt }],
+  });
+
+  log("plan", "response content types", {
+    types: res.content.map((b) => b.type),
+  });
+
+  const textBlock = res.content.find((b) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") {
+    throw new Error(`No plan from Haiku — got: ${res.content.map((b) => b.type).join(", ")}`);
+  }
+
+  log("plan", "ready", {
+    ms: Date.now() - started,
+    inputTokens: res.usage.input_tokens,
+    outputTokens: res.usage.output_tokens,
+  });
+
+  return textBlock.text.trim();
+}
+
+function buildWriterPrompt(targetSeconds: number, listenerBlock: string, timeOfDay: string): string {
+  const wordsTarget = Math.round((targetSeconds / 60) * 140 * 0.60);
+  return `${listenerBlock}You are writing a guided meditation script. Follow the plan below EXACTLY.
+
+TIME OF DAY: ${timeOfDay}
+TOTAL WORD TARGET: ~${wordsTarget} words of narration
+
+VOICE
+- Warm, intimate, human. Second person ("you") for guidance, "we" for shared moments.
+- Short sentences. Conversational. Never robotic or listy.
+- Nostril breathing by default.
+- Do NOT open with conversational acknowledgment ("That's okay", "I hear you"). Begin in meditation mode.
+- Do NOT mention AI, apps, or personalization.
+
+SILENCE
+- Use <break time="Xs" /> tags. Single tags cap at ~3s — stack for longer.
+- Every sentence ends with at least one break tag.
+- Vary durations: 1-2s within a thought, 3s between sentences, 6-9s after body instructions, 12-15s at transitions.
+- NEVER put a break between an inhale instruction and its paired exhale — the listener will freeze wondering what to do. The full breath cycle is one unit: "breathe in <break time="4s"/> and breathe out <break time="6s"/>" is correct. "breathe in for 4 counts <break time="10s"/> now breathe out" is wrong.
+
+OUTPUT
+- Script text with break tags only. No title, headers, or explanation.`;
+}
+
 export async function generateScript(
   userPrompt: string,
   targetSeconds: number,
@@ -199,35 +291,32 @@ export async function generateScript(
     hour < 17 ? "afternoon" :
     hour < 21 ? "evening" : "night";
 
-  log("claude", "generating script", {
-    targetSeconds,
-    timeOfDay,
-    promptLen: userPrompt.length,
-    hasListenerContext: listenerBlock.length > 0,
-  });
+  log("plan", "generating", { targetSeconds, timeOfDay, promptLen: userPrompt.length });
 
+  // Phase 1: Haiku generates a structured plan with bounded thinking
+  const plan = await generatePlan(userPrompt, targetSeconds, listenerBlock, timeOfDay);
+
+  log("write", "generating script from plan");
+
+  // Phase 2: Opus writes the script from the plan, no thinking
   const response = await anthropic.messages.create({
-    model: SCRIPT_MODEL,
+    model: WRITER_MODEL,
     max_tokens: 20000,
-    thinking: { type: "adaptive" },
-    // @ts-ignore output_config is valid on Sonnet 4.6; SDK types may lag
-    output_config: { effort: "low" },
-    system: [
+    system: buildWriterPrompt(targetSeconds, listenerBlock, timeOfDay),
+    messages: [
       {
-        type: "text",
-        text: buildSystemPrompt(targetSeconds, listenerBlock, timeOfDay),
-        cache_control: { type: "ephemeral" },
+        role: "user",
+        content: `Plan:\n${plan}\n\nListener input: "${userPrompt}"\n\nWrite the meditation script now.`,
       },
     ],
-    messages: [{ role: "user", content: userPrompt }],
   });
 
   const textBlock = response.content.find((b) => b.type === "text");
   if (!textBlock || textBlock.type !== "text") {
-    throw new Error("No text block in Claude response");
+    throw new Error("No text block in Opus response");
   }
   const script = textBlock.text.trim();
-  log("claude", "script ready", {
+  log("write", "script ready", {
     ms: Date.now() - started,
     scriptLen: script.length,
     inputTokens: response.usage.input_tokens,

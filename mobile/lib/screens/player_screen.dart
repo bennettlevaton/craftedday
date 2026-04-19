@@ -63,12 +63,14 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   Future<void> _load() async {
     try {
+      debugPrint('[player] loading voice: ${widget.audioUrl}');
       // Kick off both loads in parallel. Voice playback blocks on its own
       // load; music failure is non-fatal — meditation still plays.
       final voiceFuture = _player.setUrl(widget.audioUrl);
       final musicFuture = _loadMusic();
 
       await voiceFuture;
+      await _player.setVolume(1.0);
       await _player.play();
       await musicFuture; // won't throw; _loadMusic swallows its own errors
     } catch (e) {
@@ -82,13 +84,19 @@ class _PlayerScreenState extends State<PlayerScreen>
   Future<void> _loadMusic() async {
     try {
       final url = await apiService.getRandomMusic();
-      if (url == null || !mounted) return;
+      if (url == null) {
+        debugPrint('[music] no URL returned from /api/music/random');
+        return;
+      }
+      if (!mounted) return;
+      debugPrint('[music] loading $url');
       await _music.setUrl(url);
       await _music.setLoopMode(LoopMode.one);
-      await _music.setVolume(0.18);
+      await _music.setVolume(0.15);
       await _music.play();
-    } catch (_) {
-      // Music is nice-to-have; silence is an acceptable fallback.
+      debugPrint('[music] playing');
+    } catch (e, st) {
+      debugPrint('[music] failed to load: $e\n$st');
     }
   }
 

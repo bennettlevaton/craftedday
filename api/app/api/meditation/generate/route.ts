@@ -10,9 +10,16 @@ import { log, logError } from "@/lib/log";
 import { getOrCreateProfile } from "@/lib/user";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 900; // 15 min
 
-type Body = { prompt?: string };
+type Body = {
+  prompt?: string;
+  duration?: number;
+};
+
+const MIN_DURATION = 30;
+const MAX_DURATION = 1800; // 30 min hard cap
+const DEFAULT_DURATION = 600; // 10 min
 
 export async function POST(req: NextRequest) {
   const reqId = randomUUID().slice(0, 8);
@@ -27,7 +34,21 @@ export async function POST(req: NextRequest) {
     }
 
     const userId = process.env.TEST_USER_ID ?? "test-user-1";
-    const targetSeconds = Number(process.env.MEDITATION_TARGET_SECONDS ?? 30);
+
+    const targetSeconds = typeof body.duration === "number"
+      ? body.duration
+      : DEFAULT_DURATION;
+
+    if (
+      !Number.isFinite(targetSeconds) ||
+      targetSeconds < MIN_DURATION ||
+      targetSeconds > MAX_DURATION
+    ) {
+      return NextResponse.json(
+        { error: `duration must be ${MIN_DURATION}-${MAX_DURATION} seconds` },
+        { status: 400 },
+      );
+    }
 
     const profile = await getOrCreateProfile(userId);
     const voiceGender: VoiceGender =

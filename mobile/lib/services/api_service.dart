@@ -34,10 +34,11 @@ class ApiService {
 
   Future<GeneratedMeditation> generateMeditation({
     required String prompt,
+    required int durationSeconds,
   }) async {
     final res = await _dio.post(
       '/api/meditation/generate',
-      data: {'prompt': prompt},
+      data: {'prompt': prompt, 'duration': durationSeconds},
     );
     return GeneratedMeditation.fromJson(res.data as Map<String, dynamic>);
   }

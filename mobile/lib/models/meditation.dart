@@ -5,6 +5,7 @@ class Meditation {
   final int? duration;
   final int? rating;
   final String? feedback;
+  final bool isFavorite;
   final DateTime createdAt;
 
   const Meditation({
@@ -14,6 +15,7 @@ class Meditation {
     this.duration,
     this.rating,
     this.feedback,
+    this.isFavorite = false,
     required this.createdAt,
   });
 
@@ -25,6 +27,7 @@ class Meditation {
       duration: json['duration'] as int?,
       rating: json['rating'] as int?,
       feedback: json['feedback'] as String?,
+      isFavorite: (json['isFavorite'] as bool?) ?? false,
       createdAt: DateTime.parse(json['createdAt'] as String),
     );
   }

@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, varchar, text, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: varchar("id", { length: 128 }).primaryKey(),
@@ -29,5 +29,6 @@ export const meditations = pgTable("meditations", {
   duration: integer("duration"),
   rating: integer("rating"),
   feedback: text("feedback"),
+  isFavorite: boolean("is_favorite").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

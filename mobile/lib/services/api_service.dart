@@ -28,7 +28,7 @@ class ApiService {
     BaseOptions(
       baseUrl: _baseUrl,
       connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 90),
+      receiveTimeout: const Duration(minutes: 15),
     ),
   );
 
@@ -58,6 +58,17 @@ class ApiService {
     final res = await _dio.get('/api/history');
     final sessions = (res.data['sessions'] as List).cast<Map<String, dynamic>>();
     return sessions.map(Meditation.fromJson).toList();
+  }
+
+  Future<List<Meditation>> getFavorites() async {
+    final res = await _dio.get('/api/favorites');
+    final sessions = (res.data['sessions'] as List).cast<Map<String, dynamic>>();
+    return sessions.map(Meditation.fromJson).toList();
+  }
+
+  Future<bool> toggleFavorite(String id) async {
+    final res = await _dio.post('/api/meditation/$id/favorite');
+    return res.data['isFavorite'] as bool;
   }
 
   Future<Meditation> getMeditation(String id) async {

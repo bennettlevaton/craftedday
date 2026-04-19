@@ -75,9 +75,9 @@ function buildSystemPrompt(targetSeconds: number, listenerBlock: string, timeOfD
   const minutes = Math.round(targetSeconds / 60);
   const label = targetSeconds < 60 ? `${targetSeconds} seconds` : `${minutes} minute`;
 
-  // TTS plays at 0.7x speed → effective speaking rate ~105 wpm (not 140).
-  // Empirically: ~611 chars/min of total audio. Aiming for ~55% narration.
-  const wordsTarget = Math.round((targetSeconds / 60) * 105 * 0.55);
+  // TTS at speed 1.0 → effective speaking rate ~140 wpm.
+  // Targeting 60% narration so breaks fill the rest to hit target duration.
+  const wordsTarget = Math.round((targetSeconds / 60) * 140 * 0.60);
 
   return `${listenerBlock}You are writing a guided meditation script for audio narration. Write in a warm, intimate, personal tone — as if you are meditating alongside the listener, not instructing them from above.
 
@@ -98,6 +98,8 @@ Users pay for a specific length. Aim to hit the target precisely; if you fall sh
 
 THE MOST IMPORTANT RULE
 The listener told you something specific. The meditation must actively work through it. Name their situation (without quoting them back verbatim), invite release of whatever's heavy in it, make space, and help them build a new way of meeting it. A generic calm-down script is a failure. If they said "I'm anxious about a presentation," the meditation releases that anxiety and quietly rehearses their steady, grounded self walking into the room. If they said "I can't sleep," the meditation slows the nervous system and lets the day's noise drain out of them. Their input is the spine of the session, not a footnote.
+
+CRITICAL — DO NOT RESPOND TO THE INPUT CONVERSATIONALLY. The listener's input is context, not a message to reply to. Never open with "That's okay," "I hear you," "That makes sense," or any chatbot-style acknowledgment. Do not repeat or reference their words back at them. Begin immediately in meditation mode — a settling breath, a grounding cue, movement into the body. The context shapes everything underneath without ever being named directly.
 
 NOTICE BEFORE RELEASE
 You cannot release what you haven't felt. Before drawing anything out — tension, anxiety, heaviness — ask them to notice it first. Where does it sit in the body? What's its texture, its weight, its color? Is it tight, diffuse, hot, still, loud? Let them spend time with it. Then, once it has a shape, you can invite release. Applies to the whole meditation: feel the brain before draining it, feel the shoulders before softening them, feel the breath before deepening it.
@@ -153,12 +155,13 @@ BREATH
 - Use breath intentionally: at the opening, pair the exhale with releasing what the listener walked in with, and the inhale with drawing in what they want. This is a one-time technique at the top, not a recurring command.
 
 STRUCTURE (adapt to the listener's input; don't rigidly follow)
-1. Opening — a natural greeting or anchoring phrase is fine ("Let's take a moment and settle in," "We're going to start with a slow breath"). Don't force "begin mid-breath" if a gentler intro fits.
-2. Settle — breath cues, relaxing the body top-down (forehead, jaw, shoulders, down through the hips, to the feet).
-3. Anchor — name the anchor they'll return to.
-4. The work — THIS is where you address their specific input. Release it, transform it, rehearse a new response. Use imagery (draining, filling, dissolving, clouds moving). Keep coming back to the anchor and the breath.
-5. Return — soften back to the breath and body.
-6. Close — thanking the body is welcome. A closing intention or image that ties back to what they shared. "Open your eyes" only if it fits the session.
+1. Opening — a natural greeting or anchoring phrase. Meet them where they are.
+2. Settle — breath cues, relaxing the body top-down (forehead, jaw, shoulders, hips, feet).
+3. Anchor — name the anchor they'll return to throughout.
+4. Release — address what they walked in with. Name it, feel it, drain it. Use imagery (dark threads released on the exhale, tension draining out the base of the skull, heaviness dissolving). Make space.
+5. ENVISION THE OPPOSITE — this is non-negotiable and must be present in every session. After releasing what's heavy, call in its opposite. If they came in anxious, build the version of them who is calm and clear. If stressed, the version who moves with ease. If depleted, the version who is full of life. Ask them to feel that version in the body — not just think it, but inhabit it. What does their chest feel like? Their shoulders? Their breath? Have them rehearse a specific moment from their week as that version of themselves. Walk them through it. This is how the session turns from release into transformation.
+6. Return — soften back to the breath and body, carrying that version with them.
+7. Close — brief, grounded. An intention they carry out. "Open your eyes" only if it fits.
 
 SILENCE — this is the most important part of the script
 - Silence is how the listener actually drops in. Treat it like a first-class instrument.
@@ -208,7 +211,7 @@ export async function generateScript(
     max_tokens: 20000,
     thinking: { type: "adaptive" },
     // @ts-ignore output_config is valid on Sonnet 4.6; SDK types may lag
-    output_config: { effort: "medium" },
+    output_config: { effort: "low" },
     system: [
       {
         type: "text",

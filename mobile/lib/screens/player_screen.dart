@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:just_audio/just_audio.dart';
 import '../services/api_service.dart';
+import '../services/music_service.dart';
 import '../theme/colors.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -27,7 +28,6 @@ class PlayerScreen extends StatefulWidget {
 class _PlayerScreenState extends State<PlayerScreen>
     with SingleTickerProviderStateMixin {
   late final AudioPlayer _player;
-  late final AudioPlayer _music;
   late final AnimationController _breath;
   StreamSubscription<PlayerState>? _stateSub;
 
@@ -35,7 +35,6 @@ class _PlayerScreenState extends State<PlayerScreen>
   void initState() {
     super.initState();
     _player = AudioPlayer();
-    _music = AudioPlayer();
     _breath = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 5),
@@ -45,13 +44,13 @@ class _PlayerScreenState extends State<PlayerScreen>
     _stateSub = _player.playerStateStream.listen((state) {
       // Keep music in lockstep with voice playback.
       if (state.playing) {
-        if (!_music.playing) _music.play();
+        MusicService.instance.resume();
       } else {
-        if (_music.playing) _music.pause();
+        MusicService.instance.pause();
       }
 
       if (state.processingState == ProcessingState.completed && mounted) {
-        _music.stop();
+        MusicService.instance.stop();
         if (widget.replay) {
           context.pop();
         } else {
@@ -64,15 +63,12 @@ class _PlayerScreenState extends State<PlayerScreen>
   Future<void> _load() async {
     try {
       debugPrint('[player] loading voice: ${widget.audioUrl}');
-      // Kick off both loads in parallel. Voice playback blocks on its own
-      // load; music failure is non-fatal — meditation still plays.
-      final voiceFuture = _player.setUrl(widget.audioUrl);
-      final musicFuture = _loadMusic();
-
-      await voiceFuture;
+      await _player.setUrl(widget.audioUrl);
       await _player.setVolume(1.0);
+      // Music already started in loading screen via MusicService singleton.
+      // If this is a replay, start fresh.
+      if (widget.replay) await MusicService.instance.start();
       await _player.play();
-      await musicFuture; // won't throw; _loadMusic swallows its own errors
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -81,30 +77,10 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
   }
 
-  Future<void> _loadMusic() async {
-    try {
-      final url = await apiService.getRandomMusic();
-      if (url == null) {
-        debugPrint('[music] no URL returned from /api/music/random');
-        return;
-      }
-      if (!mounted) return;
-      debugPrint('[music] loading $url');
-      await _music.setUrl(url);
-      await _music.setLoopMode(LoopMode.one);
-      await _music.setVolume(0.15);
-      await _music.play();
-      debugPrint('[music] playing');
-    } catch (e, st) {
-      debugPrint('[music] failed to load: $e\n$st');
-    }
-  }
-
   @override
   void dispose() {
     _stateSub?.cancel();
     _player.dispose();
-    _music.dispose();
     _breath.dispose();
     super.dispose();
   }

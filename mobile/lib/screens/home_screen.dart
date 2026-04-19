@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/music_service.dart';
 import '../theme/colors.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -28,6 +30,18 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadName();
+    _loadDuration();
+  }
+
+  Future<void> _loadDuration() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getInt('session_duration');
+    if (saved != null && mounted) setState(() => _durationSeconds = saved);
+  }
+
+  Future<void> _saveDuration(int seconds) async {
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setInt('session_duration', seconds);
   }
 
   Future<void> _loadName() async {
@@ -51,6 +65,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (prompt.isEmpty || _loading) return;
 
     setState(() => _loading = true);
+    _controller.clear();
+    MusicService.instance.start(); // start music immediately, don't await
     try {
       final result = await apiService.generateMeditation(
         prompt: prompt,
@@ -169,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          if (_loading) const _LoadingOverlay(),
+          if (_loading) const Positioned.fill(child: _LoadingOverlay()),
         ],
       ),
     );
@@ -201,6 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (picked != null && mounted) {
       setState(() => _durationSeconds = picked);
+      _saveDuration(picked);
     }
   }
 }
@@ -262,36 +279,128 @@ class _DurationSheet extends StatelessWidget {
   }
 }
 
-class _LoadingOverlay extends StatelessWidget {
+class _LoadingOverlay extends StatefulWidget {
   const _LoadingOverlay();
+
+  @override
+  State<_LoadingOverlay> createState() => _LoadingOverlayState();
+}
+
+class _LoadingOverlayState extends State<_LoadingOverlay>
+    with TickerProviderStateMixin {
+  late final AnimationController _breathController;
+  late final AnimationController _fadeController;
+  int _cueIndex = 0;
+
+  static const _cues = [
+    'Crafting your session — begin settling in now.',
+    'Find a comfortable position.',
+    'Let your eyes close softly.',
+    'Breathe in slowly through your nose.',
+    'And let it all the way out.',
+    'Feel your feet grounded beneath you.',
+    'Allow your shoulders to drop.',
+    'Breathe in what you need today.',
+    'Breathe out whatever you\'re carrying.',
+    'Let your jaw soften.',
+    'Your hands, open and easy.',
+    'Stay with your breath.',
+    'Breathing in calm.',
+    'Breathing out tension.',
+    'One more slow breath in.',
+    'And let it go.',
+    'Your session is almost ready.',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _breathController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5),
+    )..repeat(reverse: true);
+
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..value = 1;
+
+    _scheduleCue();
+  }
+
+  Future<void> _scheduleCue() async {
+    while (mounted) {
+      await Future.delayed(const Duration(seconds: 6));
+      if (!mounted) return;
+      await _fadeController.reverse();
+      if (!mounted) return;
+      setState(() => _cueIndex = (_cueIndex + 1) % _cues.length);
+      _fadeController.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _breathController.dispose();
+    _fadeController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     return Container(
-      color: AppColors.background.withValues(alpha: 0.96),
-      child: Center(
+      color: AppColors.background,
+      child: SafeArea(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(
-              width: 32,
-              height: 32,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: AppColors.accent,
+            const Spacer(flex: 2),
+            AnimatedBuilder(
+              animation: _breathController,
+              builder: (_, __) {
+                final t = _breathController.value;
+                return Container(
+                  width: 180 + (t * 40),
+                  height: 180 + (t * 40),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        AppColors.accent.withValues(alpha: 0.20 + t * 0.12),
+                        AppColors.accent.withValues(alpha: 0.03),
+                      ],
+                    ),
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 90 + (t * 20),
+                      height: 90 + (t * 20),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.accent.withValues(alpha: 0.12 + t * 0.06),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 52),
+            FadeTransition(
+              opacity: _fadeController,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 48),
+                child: Text(
+                  _cues[_cueIndex],
+                  textAlign: TextAlign.center,
+                  style: textTheme.headlineMedium?.copyWith(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w400,
+                    height: 1.4,
+                  ),
+                ),
               ),
             ),
-            const SizedBox(height: 28),
-            Text(
-              'Crafting your session',
-              style: textTheme.headlineMedium?.copyWith(fontSize: 18),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'This will take a moment.',
-              style: textTheme.bodyMedium,
-            ),
+            const Spacer(flex: 3),
           ],
         ),
       ),

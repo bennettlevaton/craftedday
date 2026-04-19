@@ -64,8 +64,7 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   Future<void> _load() async {
     try {
-      debugPrint('[player] loading voice: ${widget.audioUrl}');
-      await _player.setUrl(widget.audioUrl);
+await _player.setUrl(widget.audioUrl);
       await _player.setVolume(1.0);
       // Music already started in loading screen via MusicService singleton.
       // If this is a replay, start fresh.

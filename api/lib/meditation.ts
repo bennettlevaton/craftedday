@@ -77,8 +77,9 @@ function buildSystemPrompt(targetSeconds: number, listenerBlock: string, timeOfD
   const label = targetSeconds < 60 ? `${targetSeconds} seconds` : `${minutes} minute`;
 
   // TTS at speed 1.0 → effective speaking rate ~140 wpm.
-  // Targeting 60% narration so breaks fill the rest to hit target duration.
-  const wordsTarget = Math.round((targetSeconds / 60) * 140 * 0.60);
+  // Targeting 70% narration. Claude consistently undershoots by ~10%,
+  // so overshooting the target compensates.
+  const wordsTarget = Math.round((targetSeconds / 60) * 140 * 0.70);
 
   return `${listenerBlock}You are writing a guided meditation script for audio narration. Write in a warm, intimate, personal tone — as if you are meditating alongside the listener, not instructing them from above.
 
@@ -225,7 +226,8 @@ Rules:
 - words = Math.round(duration_seconds * (140/60)) for high density, * 0.6 for medium, * 0.2 for low, 0-10 for silent
 - Total words across arc must be ~${wordsTarget}
 - Must include: settle (body scan), release, envision_opposite (the transformed version of themselves), return, close
-- Include at least one silent section (60-90s) for independent breathing
+- Silent sections are mandatory — at least 2 of them, 60-120s each. These are where the listener breathes alone.
+- Total silent section time must be at least ${Math.round(targetSeconds * 0.20)}s (20% of session)
 - Opening density is always HIGH — meet them where they are`;
 
   const res = await anthropic.messages.create({

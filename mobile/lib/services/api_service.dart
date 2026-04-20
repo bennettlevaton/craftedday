@@ -45,14 +45,19 @@ class ApiService {
     return GeneratedMeditation.fromJson(res.data as Map<String, dynamic>);
   }
 
-  Future<void> rateMeditation({
+  Future<void> submitCheckin({
     required String id,
-    required int rating,
+    required String feeling,
+    String? whatHelped,
     String? feedback,
   }) async {
     await _dio.post(
-      '/api/meditation/$id/rate',
-      data: {'rating': rating, 'feedback': feedback},
+      '/api/meditation/$id/checkin',
+      data: {
+        'feeling': feeling,
+        if (whatHelped != null) 'whatHelped': whatHelped,
+        if (feedback != null) 'feedback': feedback,
+      },
     );
   }
 
@@ -81,6 +86,11 @@ class ApiService {
   Future<UserStats> getStats() async {
     final res = await _dio.get('/api/stats');
     return UserStats.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<Map<String, dynamic>?> getDailySession() async {
+    final res = await _dio.get('/api/session/daily');
+    return res.data['session'] as Map<String, dynamic>?;
   }
 
   Future<String?> getRandomMusic() async {

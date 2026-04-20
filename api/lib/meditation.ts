@@ -205,6 +205,7 @@ Effective speaking rate: ~140 wpm. Target ~${wordsTarget} total words of narrati
 
 Output this exact JSON:
 {
+  "title": "3-5 word evocative session title (e.g. 'Finding Ease', 'Night Release', 'Grounded Start')",
   "opening_context": "how to meet the listener — their state, energy, what they need immediately",
   "technique": "1-2 specific techniques (e.g. box breathing, body scan, noting, visualization)",
   "anchor": "specific anchor point (e.g. belly button, chest rise, feet on floor)",
@@ -287,7 +288,7 @@ export async function generateScript(
   userPrompt: string,
   targetSeconds: number,
   listenerContext: ListenerContext,
-): Promise<string> {
+): Promise<{ script: string; title: string }> {
   const started = Date.now();
   const listenerBlock = buildListenerContextBlock(listenerContext);
 
@@ -323,15 +324,28 @@ export async function generateScript(
     throw new Error("No text block in Opus response");
   }
   const script = textBlock.text.trim();
+
+  // Extract title from the plan JSON
+  let title = "A moment for you";
+  try {
+    const planJson = JSON.parse(plan);
+    if (typeof planJson.title === "string" && planJson.title.length > 0) {
+      title = planJson.title;
+    }
+  } catch {
+    // Plan might not be valid JSON; use default title
+  }
+
   log("write", "script ready", {
     ms: Date.now() - started,
     scriptLen: script.length,
+    title,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
     cacheWrite: response.usage.cache_creation_input_tokens ?? 0,
     cacheRead: response.usage.cache_read_input_tokens ?? 0,
   });
-  return script;
+  return { script, title };
 }
 
 // 10-second trailing silence so sessions don't end abruptly.
@@ -398,50 +412,85 @@ export async function generateAudio(
 export async function refreshPreferenceSummary(userId: string): Promise<void> {
   const started = Date.now();
 
+  // Fetch all sessions with any check-in data
   const sessions = await db
     .select({
       prompt: meditations.prompt,
-      rating: meditations.rating,
+      feeling: meditations.feeling,
+      whatHelped: meditations.whatHelped,
       feedback: meditations.feedback,
+      duration: meditations.duration,
       createdAt: meditations.createdAt,
     })
     .from(meditations)
     .where(
-      and(eq(meditations.userId, userId), isNotNull(meditations.rating)),
+      and(
+        eq(meditations.userId, userId),
+        isNotNull(meditations.feeling),
+      ),
     )
     .orderBy(desc(meditations.createdAt));
 
   if (sessions.length === 0) {
-    log("summary", "no rated sessions yet, skipping", { userId });
+    log("summary", "no check-ins yet, skipping", { userId });
     return;
   }
 
+  // Compute behavioral stats
+  const total = sessions.length;
+  const calmerCount = sessions.filter((s) => s.feeling === "calmer").length;
+  const tenseCount = sessions.filter((s) => s.feeling === "tense").length;
+  const calmerPct = Math.round((calmerCount / total) * 100);
+
+  const helpedCounts: Record<string, number> = {};
+  for (const s of sessions) {
+    if (s.whatHelped) helpedCounts[s.whatHelped] = (helpedCounts[s.whatHelped] ?? 0) + 1;
+  }
+  const topHelped = Object.entries(helpedCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k]) => k)
+    .slice(0, 2);
+
+  const mornings = sessions.filter((s) => new Date(s.createdAt).getHours() < 12).length;
+  const afternoons = sessions.filter((s) => { const h = new Date(s.createdAt).getHours(); return h >= 12 && h < 17; }).length;
+  const evenings = sessions.filter((s) => new Date(s.createdAt).getHours() >= 17).length;
+  const peakTime = mornings >= afternoons && mornings >= evenings ? "morning"
+    : afternoons >= evenings ? "afternoon" : "evening";
+
+  const avgDuration = Math.round(
+    sessions.reduce((acc, s) => acc + (s.duration ?? 600), 0) / total / 60,
+  );
+
+  const statsBlock = `BEHAVIORAL STATS (${total} sessions with check-ins):
+- Felt calmer after ${calmerPct}% of sessions (${calmerCount}/${total})
+- Peak meditation time: ${peakTime} (${mornings} morning / ${afternoons} afternoon / ${evenings} evening)
+- Average session: ${avgDuration} min
+${topHelped.length > 0 ? `- What helps most: ${topHelped.join(", ")}` : ""}`;
+
   const now = Date.now();
-  const blocks = sessions.map((s, i) => {
-    const days = Math.max(
-      0,
-      Math.floor((now - new Date(s.createdAt).getTime()) / 86_400_000),
-    );
-    const recency = i < 10 ? " (RECENT — weight heavily)" : "";
-    return `[Session ${i + 1} · ${days}d ago · ${s.rating}/5${recency}] "${s.prompt}"
-  Feedback: ${s.feedback?.trim() || "(none)"}`;
+  const blocks = sessions.slice(0, 20).map((s, i) => {
+    const days = Math.max(0, Math.floor((now - new Date(s.createdAt).getTime()) / 86_400_000));
+    const recency = i < 10 ? " (RECENT)" : "";
+    return `[Session ${i + 1} · ${days}d ago · feeling: ${s.feeling ?? "?"}${s.whatHelped ? ` · helped: ${s.whatHelped}` : ""}${recency}] "${s.prompt}"
+  Note: ${s.feedback?.trim() || "(none)"}`;
   });
 
   const response = await anthropic.messages.create({
     model: SUMMARY_MODEL,
     max_tokens: 500,
-    system: `You are building a meditation preference profile from a user's rated sessions.
+    system: `You are building a meditation preference profile from a user's session history and check-ins.
 
-Weight the 10 most recent sessions heavily; use earlier sessions as background context.
+Weight the 10 most recent sessions heavily. Use the behavioral stats as ground truth; use session details for color.
 
 Produce 100-150 words in second person ("You respond well to..."). Cover:
-- Styles and techniques they respond well to
-- What to avoid
+- Outcome patterns (when they feel calmer vs same/tense)
+- What techniques help them most
 - Recurring themes in their prompts
-- Notable patterns in how they rate sessions
+- Behavioral patterns (time of day, duration preferences)
+- What to lean into and what to avoid
 
 Output ONLY the profile paragraph. No headers, no bullets, no preamble.`,
-    messages: [{ role: "user", content: blocks.join("\n\n") }],
+    messages: [{ role: "user", content: `${statsBlock}\n\nSESSION DETAILS (most recent first):\n${blocks.join("\n\n")}` }],
   });
 
   const block = response.content[0];

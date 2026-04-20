@@ -16,6 +16,13 @@ export const userProfiles = pgTable("user_profiles", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const dailySessions = pgTable("daily_sessions", {
+  userId: varchar("user_id", { length: 128 }).notNull(),
+  date: varchar("date", { length: 10 }).notNull(),      // YYYY-MM-DD UTC
+  meditationId: varchar("meditation_id", { length: 128 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const meditations = pgTable("meditations", {
   id: varchar("id", { length: 128 }).primaryKey(),
   userId: varchar("user_id", { length: 128 }).notNull(),
@@ -23,7 +30,9 @@ export const meditations = pgTable("meditations", {
   script: text("script").notNull(),
   audioUrl: varchar("audio_url", { length: 512 }).notNull(),
   duration: integer("duration"),
-  rating: integer("rating"),
+  title: varchar("title", { length: 128 }),
+  feeling: varchar("feeling", { length: 10 }),      // calmer | same | tense
+  whatHelped: varchar("what_helped", { length: 32 }), // breath | body | silence | visualization
   feedback: text("feedback"),
   isFavorite: boolean("is_favorite").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

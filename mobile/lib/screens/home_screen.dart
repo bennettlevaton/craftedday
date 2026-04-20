@@ -25,13 +25,36 @@ class _HomeScreenState extends State<HomeScreen> {
   final _controller = TextEditingController();
   bool _loading = false;
   String? _name;
-  int _durationSeconds = 600; // 10 min default
+  int _durationSeconds = 600;
+  Map<String, dynamic>? _dailySession; // 10 min default
 
   @override
   void initState() {
     super.initState();
     _loadName();
     _loadDuration();
+    _loadDailySession();
+  }
+
+  Future<void> _loadDailySession() async {
+    try {
+      final session = await apiService.getDailySession();
+      if (mounted && session != null) {
+        setState(() => _dailySession = session);
+      }
+    } catch (_) {
+      // Silent — card just won't show
+    }
+  }
+
+  void _startDailySession() {
+    final s = _dailySession;
+    if (s == null) return;
+    context.push(
+      '/player?audioUrl=${Uri.encodeComponent(s['audioUrl'] as String)}'
+      '&id=${s['id']}'
+      '&duration=${s['duration'] ?? 600}',
+    );
   }
 
   Future<void> _loadDuration() async {
@@ -111,15 +134,22 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: Stack(
-        children: [
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Spacer(flex: 2),
+      body: _loading
+          ? const _LoadingOverlay()
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                  const SizedBox(height: 40),
+                  if (_dailySession != null) ...[
+                    _DailySessionCard(onTap: _startDailySession),
+                    const SizedBox(height: 28),
+                  ],
                   Text(
                     _name == null ? greeting : '$greeting, $_name',
                     style: textTheme.bodyMedium?.copyWith(
@@ -135,7 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 40),
                   TextField(
                     controller: _controller,
-                    autofocus: true,
+                    autofocus: false,
                     maxLines: 5,
                     minLines: 3,
                     enabled: !_loading,
@@ -182,14 +212,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: const Text('Begin meditation'),
                     ),
                   ),
-                  const Spacer(flex: 3),
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
           ),
-          if (_loading) const Positioned.fill(child: _LoadingOverlay()),
-        ],
-      ),
+        ),
     );
   }
 
@@ -221,6 +249,65 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _durationSeconds = picked);
       _saveDuration(picked);
     }
+  }
+}
+
+class _DailySessionCard extends StatelessWidget {
+  final VoidCallback onTap;
+  const _DailySessionCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.accent.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: AppColors.accent.withValues(alpha: 0.25),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Your session is ready',
+                    style: textTheme.headlineMedium?.copyWith(fontSize: 16),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'A session crafted for you today',
+                    style: textTheme.bodyMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.accent,
+              ),
+              child: const Icon(
+                Icons.play_arrow_rounded,
+                color: AppColors.surface,
+                size: 22,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

@@ -5,7 +5,6 @@ import '../theme/colors.dart';
 
 class PostSessionScreen extends StatefulWidget {
   final String meditationId;
-
   const PostSessionScreen({super.key, required this.meditationId});
 
   @override
@@ -13,35 +12,37 @@ class PostSessionScreen extends StatefulWidget {
 }
 
 class _PostSessionScreenState extends State<PostSessionScreen> {
-  final _feedbackController = TextEditingController();
-  int _rating = 0;
+  final _notesController = TextEditingController();
+  String? _feeling;
+  String? _whatHelped;
   bool _submitting = false;
 
   @override
   void dispose() {
-    _feedbackController.dispose();
+    _notesController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    if (_rating == 0 || _submitting) return;
+    if (_feeling == null || _submitting) return;
     setState(() => _submitting = true);
     try {
-      await apiService.rateMeditation(
+      await apiService.submitCheckin(
         id: widget.meditationId,
-        rating: _rating,
-        feedback: _feedbackController.text.trim().isEmpty
+        feeling: _feeling!,
+        whatHelped: _whatHelped,
+        feedback: _notesController.text.trim().isEmpty
             ? null
-            : _feedbackController.text.trim(),
+            : _notesController.text.trim(),
       );
       if (!mounted) return;
       context.go('/home');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Couldn\'t save your feedback. ${e.toString()}')),
-      );
       setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Couldn\'t save. ${e.toString()}')),
+      );
     }
   }
 
@@ -60,44 +61,69 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
               Text('Well done.', style: textTheme.displayMedium),
               const SizedBox(height: 8),
               Text(
-                'How did that feel?',
+                'How do you feel?',
                 style: textTheme.bodyLarge?.copyWith(
                   color: AppColors.textSecondary,
                 ),
               ),
-              const SizedBox(height: 48),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: List.generate(5, (i) {
-                  final filled = i < _rating;
-                  return IconButton(
-                    iconSize: 36,
-                    onPressed: _submitting
-                        ? null
-                        : () => setState(() => _rating = i + 1),
-                    icon: Icon(
-                      filled ? Icons.star_rounded : Icons.star_outline_rounded,
-                      color: filled ? AppColors.accent : AppColors.textSecondary,
-                    ),
-                  );
-                }),
-              ),
               const SizedBox(height: 32),
-              TextField(
-                controller: _feedbackController,
-                maxLines: 4,
-                minLines: 3,
-                enabled: !_submitting,
-                style: textTheme.bodyLarge,
-                decoration: const InputDecoration(
-                  hintText: 'Anything you\'d want different? (optional)',
-                ),
+              Row(
+                children: [
+                  _FeelingChip(
+                    label: 'Calmer',
+                    value: 'calmer',
+                    selected: _feeling == 'calmer',
+                    onTap: () => setState(() => _feeling = 'calmer'),
+                  ),
+                  const SizedBox(width: 10),
+                  _FeelingChip(
+                    label: 'Same',
+                    value: 'same',
+                    selected: _feeling == 'same',
+                    onTap: () => setState(() => _feeling = 'same'),
+                  ),
+                  const SizedBox(width: 10),
+                  _FeelingChip(
+                    label: 'More tense',
+                    value: 'tense',
+                    selected: _feeling == 'tense',
+                    onTap: () => setState(() => _feeling = 'tense'),
+                  ),
+                ],
               ),
+              if (_feeling != null) ...[
+                const SizedBox(height: 32),
+                Text(
+                  'What helped most?',
+                  style: textTheme.headlineMedium?.copyWith(fontSize: 16),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _HelpedChip(label: 'Breath', value: 'breath', selected: _whatHelped == 'breath', onTap: () => setState(() => _whatHelped = _whatHelped == 'breath' ? null : 'breath')),
+                    _HelpedChip(label: 'Body', value: 'body', selected: _whatHelped == 'body', onTap: () => setState(() => _whatHelped = _whatHelped == 'body' ? null : 'body')),
+                    _HelpedChip(label: 'Silence', value: 'silence', selected: _whatHelped == 'silence', onTap: () => setState(() => _whatHelped = _whatHelped == 'silence' ? null : 'silence')),
+                    _HelpedChip(label: 'Visualization', value: 'visualization', selected: _whatHelped == 'visualization', onTap: () => setState(() => _whatHelped = _whatHelped == 'visualization' ? null : 'visualization')),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: _notesController,
+                  maxLines: 3,
+                  minLines: 2,
+                  style: textTheme.bodyLarge,
+                  decoration: const InputDecoration(
+                    hintText: 'Anything to note? (optional)',
+                  ),
+                ),
+              ],
               const Spacer(),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _rating > 0 && !_submitting ? _submit : null,
+                  onPressed: _feeling != null && !_submitting ? _submit : null,
                   child: _submitting
                       ? const SizedBox(
                           width: 18,
@@ -122,6 +148,85 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
               ),
               const SizedBox(height: 12),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FeelingChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FeelingChip({
+    required this.label,
+    required this.value,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(
+            color: selected ? AppColors.accent : AppColors.divider,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? AppColors.accent : AppColors.textPrimary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HelpedChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _HelpedChip({
+    required this.label,
+    required this.value,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(
+            color: selected ? AppColors.accent : AppColors.divider,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? AppColors.accent : AppColors.textPrimary,
+            fontWeight: FontWeight.w500,
+            fontSize: 14,
           ),
         ),
       ),

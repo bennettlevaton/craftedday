@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
 
     const meditationId = randomUUID();
 
-    const script = await generateScript(prompt, targetSeconds, {
+    const { script, title } = await generateScript(prompt, targetSeconds, {
       name: profile.name,
       experienceLevel: profile.experienceLevel,
       primaryGoals: profile.primaryGoals ?? [],
@@ -95,6 +95,7 @@ export async function POST(req: NextRequest) {
       id: meditationId,
       userId,
       prompt,
+      title,
       script,
       audioUrl,
       duration: targetSeconds,

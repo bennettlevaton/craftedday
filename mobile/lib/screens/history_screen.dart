@@ -226,20 +226,16 @@ class _SessionCardState extends State<_SessionCard> {
                       Text(_formatDuration(s.duration), style: textTheme.bodyMedium),
                       Text(' · ', style: textTheme.bodyMedium),
                       Text(_formatTimeAgo(s.createdAt), style: textTheme.bodyMedium),
-                      const SizedBox(width: 10),
-                      if (s.rating == null)
+                      if (s.feeling != null) ...[
+                        const SizedBox(width: 10),
                         Text(
-                          'Rate',
+                          _feelingLabel(s.feeling!),
                           style: textTheme.bodyMedium?.copyWith(
                             color: AppColors.accent,
                             fontWeight: FontWeight.w500,
                           ),
-                        )
-                      else
-                        ...List.generate(
-                          s.rating!,
-                          (_) => const Icon(Icons.star_rounded, size: 13, color: AppColors.accent),
                         ),
+                      ],
                     ],
                   ),
                 ],
@@ -264,6 +260,13 @@ class _SessionCardState extends State<_SessionCard> {
     );
   }
 }
+
+String _feelingLabel(String feeling) => switch (feeling) {
+  'calmer' => 'Calmer',
+  'same' => 'Same',
+  'tense' => 'More tense',
+  _ => feeling,
+};
 
 String _formatDuration(int? seconds) {
   if (seconds == null) return '—';

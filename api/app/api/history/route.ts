@@ -17,7 +17,9 @@ export async function GET(req: NextRequest) {
         prompt: meditations.prompt,
         audioUrl: meditations.audioUrl,
         duration: meditations.duration,
-        rating: meditations.rating,
+        feeling: meditations.feeling,
+        whatHelped: meditations.whatHelped,
+        feedback: meditations.feedback,
         isFavorite: meditations.isFavorite,
         createdAt: meditations.createdAt,
       })

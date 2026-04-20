@@ -21,7 +21,8 @@ export async function GET(
         prompt: meditations.prompt,
         audioUrl: meditations.audioUrl,
         duration: meditations.duration,
-        rating: meditations.rating,
+        feeling: meditations.feeling,
+        whatHelped: meditations.whatHelped,
         feedback: meditations.feedback,
         createdAt: meditations.createdAt,
       })

@@ -3,7 +3,8 @@ class Meditation {
   final String prompt;
   final String audioUrl;
   final int? duration;
-  final int? rating;
+  final String? feeling;      // calmer | same | tense
+  final String? whatHelped;   // breath | body | silence | visualization
   final String? feedback;
   final bool isFavorite;
   final DateTime createdAt;
@@ -13,7 +14,8 @@ class Meditation {
     required this.prompt,
     required this.audioUrl,
     this.duration,
-    this.rating,
+    this.feeling,
+    this.whatHelped,
     this.feedback,
     this.isFavorite = false,
     required this.createdAt,
@@ -25,7 +27,8 @@ class Meditation {
       prompt: json['prompt'] as String,
       audioUrl: json['audioUrl'] as String,
       duration: json['duration'] as int?,
-      rating: json['rating'] as int?,
+      feeling: json['feeling'] as String?,
+      whatHelped: json['whatHelped'] as String?,
       feedback: json['feedback'] as String?,
       isFavorite: (json['isFavorite'] as bool?) ?? false,
       createdAt: DateTime.parse(json['createdAt'] as String),

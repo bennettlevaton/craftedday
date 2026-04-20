@@ -4,6 +4,91 @@ AI-powered personalized meditation app. User describes their current mood/situat
 
 > **Also read `CODING.md`** for schema, API, Flutter, and general code conventions before making changes.
 
+---
+
+## 🚀 Launch Checklist
+
+### 1. Apple Developer Account ($99/yr)
+- [ ] Enroll at developer.apple.com if not already
+- [ ] Create App ID (`com.craftedday.app`)
+- [ ] Enable "Sign In with Apple" capability on the App ID
+- [ ] Create a Service ID for Clerk Apple OAuth
+- [ ] Generate a Sign In with Apple Key (.p8 file)
+- [ ] Create distribution provisioning profile
+- [ ] Create App Store Connect record for CraftedDay
+
+### 2. Xcode
+- [ ] **Add "Sign In with Apple" capability** — Runner target → Signing & Capabilities → + Capability
+- [ ] Set bundle ID (`com.craftedday.app`)
+- [ ] Set team to Apple Developer account
+- [ ] Set version + build number
+- [ ] Create distribution provisioning profile
+
+### 3. Clerk Production
+- [ ] Create production Clerk app (separate from current test app)
+- [ ] Configure Apple Sign In (Service ID + Team ID + Key ID + .p8)
+- [ ] Configure Google Sign In (Google Cloud OAuth credentials)
+- [ ] Add `craftedday://oauth-callback` to allowed redirect URLs
+- [ ] Swap all keys to `pk_live_` / `sk_live_` in Vercel + Flutter `.env`
+
+### 4. RevenueCat + In-App Purchase
+- [ ] Create subscription product in App Store Connect (e.g. $9.99/mo, $59.99/yr)
+- [ ] Set up RevenueCat account + project
+- [ ] Connect App Store Connect to RevenueCat
+- [ ] Integrate RevenueCat Flutter SDK
+- [ ] Gate daily session card behind paywall
+- [ ] Add paywall screen
+
+### 5. Database
+- [ ] Add missing columns in PlanetScale (admin credential):
+  ```sql
+  ALTER TABLE meditations ADD COLUMN title VARCHAR(128);
+  ALTER TABLE meditations ADD COLUMN feeling VARCHAR(10);
+  ALTER TABLE meditations ADD COLUMN what_helped VARCHAR(32);
+  ```
+
+### 6. Vercel Production
+- [ ] Set `CRON_SECRET` to a strong random string (not `craftedday-cron-2026`)
+- [ ] Wire `craftedday.com` custom domain
+- [ ] Confirm all env vars set (Clerk live keys, etc.)
+- [ ] Verify cron runs at 5am UTC (`/api/cron/generate-daily`)
+
+### 7. Legal (required for App Store)
+- [ ] **Privacy Policy** — host at `craftedday.com/privacy`. Must cover: data collected, Clerk auth, AI processing, ElevenLabs TTS. Tools: Termly, iubenda, or custom.
+- [ ] **Terms of Service** — required for subscriptions, host at `craftedday.com/terms`
+
+### 8. Landing Page (`craftedday.com`)
+- [ ] Basic page explaining the app
+- [ ] App Store link (once live)
+- [ ] Privacy policy + terms in footer
+- [ ] Support email address
+
+### 9. App Store Connect Listing
+- [ ] App name, subtitle, description, keywords
+- [ ] Screenshots (6.9" iPhone required)
+- [ ] App preview video (optional)
+- [ ] Age rating (likely 4+)
+- [ ] Support URL + Privacy Policy URL
+
+### 10. Flutter `.env` (production)
+```
+API_BASE_URL=https://craftedday.com
+CLERK_PUBLISHABLE_KEY=pk_live_...
+```
+
+### 11. Final QA
+- [ ] Full auth flow on real device (Apple + Google)
+- [ ] Generate meditation → check-in → history
+- [ ] Daily session card appears after cron runs
+- [ ] Notifications fire at 3pm, cancel after session
+- [ ] Profile edits persist
+- [ ] Sign out + sign back in
+- [ ] Subscriptions gate correctly
+
+**Rough timeline:** 2-3 weeks moving steadily. App Store review (~7 days) is the long pole.
+
+---
+
 ## Domain
 
 craftedday.com

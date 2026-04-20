@@ -26,7 +26,7 @@ class _HistoryScreenState extends State<HistoryScreen>
     // Refresh favorites list when switching to that tab
     _tabs.addListener(() {
       if (_tabs.index == 1 && !_tabs.indexIsChanging) {
-        setState(() => _favoritesFuture = apiService.getFavorites());
+        setState(() { _favoritesFuture = apiService.getFavorites(); });
       }
     });
   }
@@ -67,12 +67,12 @@ class _HistoryScreenState extends State<HistoryScreen>
           _SessionList(
             future: _historyFuture,
             emptyText: 'Your sessions will appear here',
-            onRefresh: () => setState(() => _historyFuture = apiService.getHistory()),
+            onRefresh: () { setState(() { _historyFuture = apiService.getHistory(); }); },
           ),
           _SessionList(
             future: _favoritesFuture,
             emptyText: 'Favorite sessions to revisit them here',
-            onRefresh: () => setState(() => _favoritesFuture = apiService.getFavorites()),
+            onRefresh: () { setState(() { _favoritesFuture = apiService.getFavorites(); }); },
           ),
         ],
       ),

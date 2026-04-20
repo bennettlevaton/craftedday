@@ -57,10 +57,13 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startDailySession() {
     final s = _dailySession;
     if (s == null) return;
+    // If already checked in, treat as replay (no post-session prompt)
+    final alreadyCheckedIn = s['feeling'] != null;
     context.push(
       '/player?audioUrl=${Uri.encodeComponent(s['audioUrl'] as String)}'
       '&id=${s['id']}'
-      '&duration=${s['duration'] ?? 600}',
+      '&duration=${s['duration'] ?? 600}'
+      '${alreadyCheckedIn ? '&replay=1' : ''}',
     );
   }
 

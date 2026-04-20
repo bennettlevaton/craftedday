@@ -71,6 +71,9 @@ class _PlayerScreenState extends State<PlayerScreen>
       if (!MusicService.instance.isPlaying) {
         MusicService.instance.start();
       }
+      // Brief pause before voice starts — lets listeners settle in.
+      await Future.delayed(const Duration(seconds: 3));
+      if (!mounted) return;
       await _player.play();
     } catch (e) {
       if (!mounted) return;

@@ -155,6 +155,10 @@ BREATH
 - Right: establish the breath, anchor to it, then let it be the quiet background of everything else you say
 - Default to nostril breathing throughout.
 - Use breath intentionally: at the opening, pair the exhale with releasing what the listener walked in with, and the inhale with drawing in what they want. This is a one-time technique at the top, not a recurring command.
+- NEVER COUNT BREATHS. Do not say "breathe in, two, three, four" or "one... two... three". The <break> tag provides the timing — the listener finds their own rhythm. Just say "breathe in" and let the break tag hold the space, then say "and breathe out". The count belongs to them, not you.
+
+OUTPUT REQUIREMENT
+- The very first thing in the script must be a spoken sentence — never start with a <break> tag or silence. The first word must be heard immediately.
 
 STRUCTURE (adapt to the listener's input; don't rigidly follow)
 1. Opening — a natural greeting or anchoring phrase. Meet them where they are.

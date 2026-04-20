@@ -215,7 +215,7 @@ class _SessionCardState extends State<_SessionCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    s.prompt,
+                    s.title ?? s.prompt,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: textTheme.headlineMedium?.copyWith(fontSize: 17),

@@ -178,10 +178,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     autofocus: false,
                     maxLines: 5,
                     minLines: 3,
+                    maxLength: 500,
                     enabled: !_loading,
                     style: textTheme.bodyLarge,
+                    textCapitalization: TextCapitalization.sentences,
                     decoration: const InputDecoration(
                       hintText: 'Share what\'s on your mind...',
+                      counterText: '',
                     ),
                     textInputAction: TextInputAction.newline,
                   ),
@@ -517,17 +520,21 @@ class _LoadingOverlayState extends State<_LoadingOverlay>
               },
             ),
             const SizedBox(height: 52),
-            FadeTransition(
-              opacity: _fadeController,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 48),
-                child: Text(
-                  _cues[_cueIndex],
-                  textAlign: TextAlign.center,
-                  style: textTheme.headlineMedium?.copyWith(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w400,
-                    height: 1.4,
+            SizedBox(
+              width: double.infinity,
+              height: 80,
+              child: FadeTransition(
+                opacity: _fadeController,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 48),
+                  child: Text(
+                    _cues[_cueIndex],
+                    textAlign: TextAlign.center,
+                    style: textTheme.headlineMedium?.copyWith(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w400,
+                      height: 1.4,
+                    ),
                   ),
                 ),
               ),

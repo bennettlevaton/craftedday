@@ -19,6 +19,7 @@ export async function GET(
       .select({
         id: meditations.id,
         prompt: meditations.prompt,
+        title: meditations.title,
         audioUrl: meditations.audioUrl,
         duration: meditations.duration,
         feeling: meditations.feeling,

@@ -110,7 +110,11 @@ class _MeditationDetailScreenState extends State<MeditationDetailScreen> {
                         const SizedBox(height: 8),
                         Text(_formatDate(m.createdAt), style: textTheme.bodyMedium),
                         const SizedBox(height: 6),
-                        Text(m.prompt, style: textTheme.displayMedium),
+                        Text(m.title ?? m.prompt, style: textTheme.displayMedium),
+                        if (m.title != null) ...[
+                          const SizedBox(height: 4),
+                          Text(m.prompt, style: textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary)),
+                        ],
                         const SizedBox(height: 24),
                         GestureDetector(
                           onTap: _play,

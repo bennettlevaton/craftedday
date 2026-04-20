@@ -15,6 +15,8 @@ class GateScreen extends StatefulWidget {
 
 class _GateScreenState extends State<GateScreen> {
   bool _deciding = false;
+  int _retries = 0;
+  static const _maxRetries = 10;
 
   @override
   void didChangeDependencies() {
@@ -30,6 +32,19 @@ class _GateScreenState extends State<GateScreen> {
     if (!mounted) return;
 
     final authState = ClerkAuth.of(context, listen: false);
+
+    // Clerk still initializing — reset and retry up to limit.
+    if (authState.isNotAvailable) {
+      _retries++;
+      if (_retries < _maxRetries) {
+        _deciding = false;
+      } else {
+        // Took too long — send to sign-in
+        if (mounted) context.go('/sign-in');
+      }
+      return;
+    }
+    _retries = 0;
 
     if (authState.user == null) {
       if (mounted) context.go('/sign-in');

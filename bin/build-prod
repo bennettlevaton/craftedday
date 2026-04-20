@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Build production iOS app pointing at craftedday.com.
+# Requires CLERK_PUBLISHABLE_KEY_PROD to be set in environment
+# or update the value below before building.
+
+set -e
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+echo "→ Building production iOS app"
+echo "  API: https://craftedday.com"
+echo ""
+
+cd "$ROOT/mobile"
+flutter run \
+  --dart-define=API_BASE_URL="https://craftedday.com" \
+  --dart-define=CLERK_PUBLISHABLE_KEY="pk_live_Y2xlcmsuY3JhZnRlZGRheS5jb20k" \
+  --release

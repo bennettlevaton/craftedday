@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Run Flutter on a real device pointed at the local API server.
+# Make sure bin/api (or bin/dev) is running first.
+
+set -e
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+LOCAL_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)
+if [ -z "$LOCAL_IP" ]; then
+  echo "✗ Could not detect local IP. Are you on WiFi?"
+  exit 1
+fi
+
+CLERK_KEY=$(grep CLERK_PUBLISHABLE_KEY "$ROOT/mobile/.env" | cut -d= -f2)
+
+echo "→ Running on device"
+echo "  API: http://$LOCAL_IP:3000"
+echo "  Clerk: ${CLERK_KEY:0:20}..."
+echo ""
+
+cd "$ROOT/mobile"
+flutter run \
+  --dart-define=API_BASE_URL="http://$LOCAL_IP:3000" \
+  --dart-define=CLERK_PUBLISHABLE_KEY="$CLERK_KEY"

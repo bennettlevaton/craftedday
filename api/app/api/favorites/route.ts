@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
       .select({
         id: meditations.id,
         prompt: meditations.prompt,
+        title: meditations.title,
         audioUrl: meditations.audioUrl,
         duration: meditations.duration,
         feeling: meditations.feeling,

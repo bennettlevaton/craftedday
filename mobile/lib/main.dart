@@ -1,4 +1,5 @@
 import 'package:app_links/app_links.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -10,6 +11,19 @@ import 'theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
+
+  // Configure audio session for background playback (screen lock, etc.)
+  final session = await AudioSession.instance;
+  await session.configure(const AudioSessionConfiguration(
+    avAudioSessionCategory: AVAudioSessionCategory.playback,
+    avAudioSessionMode: AVAudioSessionMode.defaultMode,
+    androidAudioAttributes: AndroidAudioAttributes(
+      contentType: AndroidAudioContentType.speech,
+      usage: AndroidAudioUsage.media,
+    ),
+    androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+  ));
+
   runApp(const CraftedDayApp());
 }
 
@@ -25,7 +39,10 @@ class _CraftedDayAppState extends State<CraftedDayApp> {
 
   @override
   Widget build(BuildContext context) {
-    final publishableKey = dotenv.env['CLERK_PUBLISHABLE_KEY'] ?? '';
+    const defined = String.fromEnvironment('CLERK_PUBLISHABLE_KEY');
+    final publishableKey = defined.isNotEmpty
+        ? defined
+        : dotenv.env['CLERK_PUBLISHABLE_KEY'] ?? '';
 
     return MaterialApp.router(
       title: 'CraftedDay',

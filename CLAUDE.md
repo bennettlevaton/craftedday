@@ -246,10 +246,15 @@ Current focus: `POST /api/meditation/generate` — the core loop.
 - [x] Everything above shipped
 - [x] Vercel deployed (craftedday.com)
 - [x] Breathing cue audio generated (female + male, in mobile/assets/audio/breathing/)
-- [ ] Wire breathing cue audio playback in loading screen
-- [ ] Auth (Clerk) — still test-user-1
-- [ ] Generation speed for long sessions (streaming approach TBD)
+- [x] Breathing cue audio wired to loading screen
+- [x] Auth: Clerk sign-in (Apple native + Google OAuth), all routes protected
+- [x] users table removed — Clerk user ID is the direct anchor
+- [x] App icons generated
+- [ ] Auth: test full flow on real device (sign in → onboarding → home → session)
+- [ ] Deploy auth changes to Vercel
 - [ ] RevenueCat subscriptions
+- [ ] Generation speed for long sessions
+- [ ] "Today's session" home redesign (see Decisions Log)
 
 ---
 
@@ -306,4 +311,7 @@ The system prompt in `api/lib/meditation.ts:buildSystemPrompt` encodes this.
 - **AWS habit, but skipped AWS.** User preferred Next.js/Vercel + Supabase-style services since they already know them; was not set on AWS.
 - **ElevenLabs model: `eleven_multilingual_v2` with tuned voice settings.** Switched from `turbo_v2_5` because turbo felt robotic for meditation. Multilingual v2 is slower but much more expressive. Settings: stability 0.75, similarity 0.75, style 0.15, speaker boost on.
 - **ElevenLabs Starter plan.** User upgraded from Free because Lauren/Evan library voices require paid tier.
+- **Auth uses Clerk directly — no users table.** Clerk user ID is the primary key for user_profiles and meditations. getOrCreateProfile creates the profile row lazily on first API call.
+- **OAuth uses externalApplication (Safari).** SFSafariViewController doesn't dismiss reliably after custom URL scheme callbacks. External browser works cleanly.
+- **"Today's session" home redesign proposed.** Key concepts: pre-generated daily session card, 3-state post-session check-in (calmer/same/more tense), weekly summary card, return nudge with reminder. Ship order: today card → check-in → sessions+feelings storage → weekly summary.
 - **Script style is opinionated.** The Claude system prompt enforces inclusive "we" language and no generic "welcome" preamble, modeled on a real meditation script from the user's wife.

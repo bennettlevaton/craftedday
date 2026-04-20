@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/meditation.dart';
+import 'clerk_service.dart';
 
 class GeneratedMeditation {
   final String id;
@@ -22,7 +24,7 @@ class GeneratedMeditation {
 }
 
 class ApiService {
-  static const String _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:3000');
+  static String get _baseUrl => dotenv.env['API_BASE_URL'] ?? 'http://localhost:3000';
 
   final Dio _dio = Dio(
     BaseOptions(
@@ -30,7 +32,7 @@ class ApiService {
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(minutes: 15),
     ),
-  );
+  )..interceptors.add(_AuthInterceptor());
 
   Future<GeneratedMeditation> generateMeditation({
     required String prompt,
@@ -174,3 +176,17 @@ class UserMe {
 }
 
 final apiService = ApiService();
+
+class _AuthInterceptor extends Interceptor {
+  @override
+  Future<void> onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
+    final token = await ClerkService.instance.getToken();
+    if (token != null) {
+      options.headers['Authorization'] = 'Bearer $token';
+    }
+    handler.next(options);
+  }
+}

@@ -13,4 +13,17 @@ import UIKit
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
   }
+
+  // When craftedday:// deep link fires (OAuth callback), dismiss the
+  // SFSafariViewController so the app comes back to the foreground.
+  override func application(
+    _ app: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+  ) -> Bool {
+    if url.scheme == "craftedday" {
+      window?.rootViewController?.presentedViewController?.dismiss(animated: true)
+    }
+    return super.application(app, open: url, options: options)
+  }
 }

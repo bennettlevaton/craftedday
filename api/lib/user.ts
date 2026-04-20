@@ -1,22 +1,9 @@
 import { eq } from "drizzle-orm";
 import { db } from "./db";
-import { users, userProfiles } from "@/db/schema";
+import { userProfiles } from "@/db/schema";
 
-export async function ensureUser(userId: string) {
-  const existing = await db
-    .select()
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (existing.length === 0) {
-    await db.insert(users).values({
-      id: userId,
-      clerkId: userId,
-      email: `${userId}@craftedday.local`,
-    });
-  }
-}
-
+// Creates a user_profiles row lazily on first access.
+// No separate users table — Clerk user ID is the anchor.
 export async function getOrCreateProfile(userId: string) {
   const existing = await db
     .select()
@@ -25,7 +12,6 @@ export async function getOrCreateProfile(userId: string) {
     .limit(1);
   if (existing.length > 0) return existing[0];
 
-  await ensureUser(userId);
   await db.insert(userProfiles).values({ userId });
 
   const created = await db

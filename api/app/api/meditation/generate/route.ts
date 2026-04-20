@@ -8,6 +8,7 @@ import { generateAudio, generateScript } from "@/lib/meditation";
 import type { VoiceGender } from "@/lib/elevenlabs";
 import { log, logError } from "@/lib/log";
 import { getOrCreateProfile } from "@/lib/user";
+import { getUserId, isAuthError } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 800;
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "prompt required" }, { status: 400 });
     }
 
-    const userId = process.env.TEST_USER_ID ?? "test-user-1";
+    const userId = await getUserId(req);
 
     const targetSeconds = typeof body.duration === "number"
       ? body.duration
@@ -108,6 +109,9 @@ export async function POST(req: NextRequest) {
       duration: targetSeconds,
     });
   } catch (err) {
+    if (isAuthError(err)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     logError(`gen:${reqId}`, err);
     const message = err instanceof Error ? err.message : "unknown error";
     return NextResponse.json({ error: message, reqId }, { status: 500 });

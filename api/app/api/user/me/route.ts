@@ -4,6 +4,7 @@ import { userProfiles } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { logError } from "@/lib/log";
 import { getOrCreateProfile } from "@/lib/user";
+import { getUserId, isAuthError } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -26,9 +27,9 @@ type PatchBody = {
   voiceGender?: string;
 };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const userId = process.env.TEST_USER_ID ?? "test-user-1";
+    const userId = await getUserId(req);
     const profile = await getOrCreateProfile(userId);
 
     return NextResponse.json({
@@ -40,6 +41,9 @@ export async function GET() {
       voiceGender: profile.voiceGender,
     });
   } catch (err) {
+    if (isAuthError(err)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     logError("user:me:get", err);
     return NextResponse.json({ error: "failed" }, { status: 500 });
   }
@@ -47,7 +51,7 @@ export async function GET() {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const userId = process.env.TEST_USER_ID ?? "test-user-1";
+    const userId = await getUserId(req);
     const body = (await req.json()) as PatchBody;
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -121,6 +125,9 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
+    if (isAuthError(err)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     logError("user:me:patch", err);
     return NextResponse.json({ error: "failed" }, { status: 500 });
   }

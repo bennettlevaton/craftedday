@@ -1,3 +1,4 @@
+import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../models/meditation.dart';
@@ -199,6 +200,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
               label: 'Voice',
               value: _formatVoice(me?.voiceGender),
               onTap: me == null ? null : _editVoice,
+            ),
+            const SizedBox(height: 48),
+            ClerkAuthBuilder(
+              builder: (context, authState) => GestureDetector(
+                onTap: () async {
+                  await authState.signOut();
+                  if (context.mounted) context.go('/');
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(color: AppColors.divider),
+                  ),
+                  child: Center(
+                    child: Text(
+                      'Sign out',
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                    ),
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 32),
           ],

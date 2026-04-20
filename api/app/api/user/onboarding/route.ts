@@ -4,6 +4,7 @@ import { userProfiles } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { logError } from "@/lib/log";
 import { getOrCreateProfile } from "@/lib/user";
+import { getUserId, isAuthError } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,7 @@ const VALID_GOALS = new Set([
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = process.env.TEST_USER_ID ?? "test-user-1";
+    const userId = await getUserId(req);
     const body = (await req.json()) as Body;
 
     const name = body.name?.trim();
@@ -84,6 +85,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
+    if (isAuthError(err)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     logError("user:onboarding", err);
     return NextResponse.json({ error: "failed" }, { status: 500 });
   }

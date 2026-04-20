@@ -4,6 +4,7 @@ import { meditations } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { logError } from "@/lib/log";
 import { refreshPreferenceSummary } from "@/lib/meditation";
+import { getUserId, isAuthError } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -18,7 +19,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const userId = process.env.TEST_USER_ID ?? "test-user-1";
+    const userId = await getUserId(req);
     const body = (await req.json()) as Body;
 
     const rating = body.rating;
@@ -43,6 +44,9 @@ export async function POST(
 
     return NextResponse.json({ ok: true });
   } catch (err) {
+    if (isAuthError(err)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     logError("rate", err);
     return NextResponse.json({ error: "failed" }, { status: 500 });
   }

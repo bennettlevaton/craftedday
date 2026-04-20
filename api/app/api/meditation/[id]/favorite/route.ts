@@ -3,16 +3,17 @@ import { db } from "@/lib/db";
 import { meditations } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { logError } from "@/lib/log";
+import { getUserId, isAuthError } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
-    const userId = process.env.TEST_USER_ID ?? "test-user-1";
+    const userId = await getUserId(req);
 
     const rows = await db
       .select({ isFavorite: meditations.isFavorite })
@@ -32,6 +33,9 @@ export async function POST(
 
     return NextResponse.json({ isFavorite: newValue });
   } catch (err) {
+    if (isAuthError(err)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     logError("favorite", err);
     return NextResponse.json({ error: "failed" }, { status: 500 });
   }

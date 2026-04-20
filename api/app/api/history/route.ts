@@ -1,14 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { meditations } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { logError } from "@/lib/log";
+import { getUserId, isAuthError } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const userId = process.env.TEST_USER_ID ?? "test-user-1";
+    const userId = await getUserId(req);
 
     const rows = await db
       .select({
@@ -27,6 +28,9 @@ export async function GET() {
 
     return NextResponse.json({ sessions: rows });
   } catch (err) {
+    if (isAuthError(err)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     logError("history", err);
     return NextResponse.json({ error: "failed" }, { status: 500 });
   }

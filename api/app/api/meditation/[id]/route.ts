@@ -3,16 +3,17 @@ import { db } from "@/lib/db";
 import { meditations } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { logError } from "@/lib/log";
+import { getUserId, isAuthError } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
-    const userId = process.env.TEST_USER_ID ?? "test-user-1";
+    const userId = await getUserId(req);
 
     const rows = await db
       .select({
@@ -34,6 +35,9 @@ export async function GET(
 
     return NextResponse.json(rows[0]);
   } catch (err) {
+    if (isAuthError(err)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     logError("meditation:get", err);
     return NextResponse.json({ error: "failed" }, { status: 500 });
   }

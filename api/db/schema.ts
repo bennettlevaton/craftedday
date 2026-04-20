@@ -1,11 +1,7 @@
 import { pgTable, varchar, text, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 
-export const users = pgTable("users", {
-  id: varchar("id", { length: 128 }).primaryKey(),
-  clerkId: varchar("clerk_id", { length: 128 }).notNull().unique(),
-  email: varchar("email", { length: 255 }).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+// No users table — Clerk provides the user ID directly on every request.
+// user_profiles.user_id and meditations.user_id are Clerk user IDs.
 
 export const userProfiles = pgTable("user_profiles", {
   userId: varchar("user_id", { length: 128 }).primaryKey(),

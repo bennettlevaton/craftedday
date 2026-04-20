@@ -79,7 +79,7 @@ function buildSystemPrompt(targetSeconds: number, listenerBlock: string, timeOfD
   // TTS at speed 1.0 → effective speaking rate ~140 wpm.
   // Targeting 70% narration. Claude consistently undershoots by ~10%,
   // so overshooting the target compensates.
-  const wordsTarget = Math.round((targetSeconds / 60) * 140 * 0.70);
+  const wordsTarget = Math.round((targetSeconds / 60) * 140 * 0.80);
 
   return `${listenerBlock}You are writing a guided meditation script for audio narration. Write in a warm, intimate, personal tone — as if you are meditating alongside the listener, not instructing them from above.
 
@@ -91,7 +91,7 @@ Before writing a single line of the script, plan silently:
 2. Which meditation technique(s) fit — box breathing, body scan, progressive relaxation, metta, noting, visualization, somatic grounding, open awareness? Pick 1-2. Don't announce them.
 3. What's the arc — settle, anchor, work (addressing their input), return, close?
 4. Where will the longer silent stretches go, and how long?
-5. Will this plan actually land near ${label}? The audio plays at a slow, calm pace — effective speaking rate is ~105 words/minute. Target ~${wordsTarget} words of narration (not counting break tags), with the rest as silence. Sanity-check your word count before you write.
+5. Will this plan actually land near ${label}? Effective speaking rate is ~140 words/minute. Target ~${wordsTarget} words of narration (not counting break tags), with the rest as silence. Sanity-check your word count before you write.
 
 Then draft the script.
 
@@ -194,7 +194,7 @@ async function generatePlan(
 ): Promise<string> {
   const started = Date.now();
   const minutes = Math.round(targetSeconds / 60);
-  const wordsTarget = Math.round((targetSeconds / 60) * 140 * 0.60);
+  const wordsTarget = Math.round((targetSeconds / 60) * 140 * 0.80);
 
   const plannerPrompt = `${listenerBlock}You are planning a guided meditation session. Output ONLY valid JSON — no markdown, no explanation.
 
@@ -256,7 +256,7 @@ Rules:
 }
 
 function buildWriterPrompt(targetSeconds: number, listenerBlock: string, timeOfDay: string): string {
-  const wordsTarget = Math.round((targetSeconds / 60) * 140 * 0.60);
+  const wordsTarget = Math.round((targetSeconds / 60) * 140 * 0.80);
   return `${listenerBlock}You are writing a guided meditation script. Follow the plan below EXACTLY.
 
 TIME OF DAY: ${timeOfDay}

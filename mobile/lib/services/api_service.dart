@@ -24,7 +24,11 @@ class GeneratedMeditation {
 }
 
 class ApiService {
-  static String get _baseUrl => dotenv.env['API_BASE_URL'] ?? 'http://localhost:3000';
+  static String get _baseUrl {
+    const defined = String.fromEnvironment('API_BASE_URL');
+    if (defined.isNotEmpty) return defined;
+    return dotenv.env['API_BASE_URL'] ?? 'http://localhost:3000';
+  }
 
   final Dio _dio = Dio(
     BaseOptions(

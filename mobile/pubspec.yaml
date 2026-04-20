@@ -44,6 +44,8 @@ dependencies:
   google_fonts: ^6.0.0
   app_links: ^6.0.0
   sign_in_with_apple: ^6.0.0
+  flutter_local_notifications: ^18.0.0
+  timezone: ^0.9.0
 
 flutter_launcher_icons:
   android: false

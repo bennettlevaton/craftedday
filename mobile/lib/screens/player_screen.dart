@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:just_audio/just_audio.dart';
 import '../services/api_service.dart';
 import '../services/music_service.dart';
+import '../services/notification_service.dart';
 import '../theme/colors.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -56,6 +57,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         if (widget.replay) {
           context.pop();
         } else {
+          NotificationService.instance.markSessionCompletedToday();
           context.go('/post-session?id=${widget.id}');
         }
       }
@@ -64,11 +66,11 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   Future<void> _load() async {
     try {
-await _player.setUrl(widget.audioUrl);
+      await _player.setUrl(widget.audioUrl);
       await _player.setVolume(1.0);
-      // Music already started in loading screen via MusicService singleton.
-      // If this is a replay, start fresh.
-      if (widget.replay) await MusicService.instance.start();
+      if (!MusicService.instance.isPlaying) {
+        MusicService.instance.start();
+      }
       await _player.play();
     } catch (e) {
       if (!mounted) return;

@@ -10,7 +10,7 @@ import type { VoiceGender } from "@/lib/elevenlabs";
 import { log, logError } from "@/lib/log";
 
 export const runtime = "nodejs";
-export const maxDuration = 900;
+export const maxDuration = 800;
 
 const DEFAULT_DURATION = 600; // 10 min
 

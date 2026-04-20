@@ -4,6 +4,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/music_service.dart';
+import '../services/notification_service.dart';
 import '../theme/colors.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -34,6 +35,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadName();
     _loadDuration();
     _loadDailySession();
+    _setupNotifications();
+  }
+
+  Future<void> _setupNotifications() async {
+    final granted = await NotificationService.instance.requestPermission();
+    if (granted) await NotificationService.instance.scheduleIfNeeded();
   }
 
   Future<void> _loadDailySession() async {

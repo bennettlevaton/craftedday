@@ -25,11 +25,11 @@ AI-powered personalized meditation app. User describes their current mood/situat
 - [ ] Create distribution provisioning profile
 
 ### 3. Clerk Production
-- [ ] Create production Clerk app (separate from current test app)
+- [x] Create production Clerk app (separate from current test app)
 - [ ] Configure Apple Sign In (Service ID + Team ID + Key ID + .p8)
-- [ ] Configure Google Sign In (Google Cloud OAuth credentials)
+- [x] Configure Google Sign In (Google Cloud OAuth credentials)
 - [ ] Add `craftedday://oauth-callback` to allowed redirect URLs
-- [ ] Swap all keys to `pk_live_` / `sk_live_` in Vercel + Flutter `.env`
+- [x] Swap all keys to `pk_live_` / `sk_live_` in Vercel + Flutter `.env`
 
 ### 4. RevenueCat + In-App Purchase
 - [ ] Create subscription product in App Store Connect (e.g. $9.99/mo, $59.99/yr)
@@ -40,7 +40,7 @@ AI-powered personalized meditation app. User describes their current mood/situat
 - [ ] Add paywall screen
 
 ### 5. Database
-- [ ] Add missing columns in PlanetScale (admin credential):
+- [x] Add missing columns in PlanetScale (admin credential):
   ```sql
   ALTER TABLE meditations ADD COLUMN title VARCHAR(128);
   ALTER TABLE meditations ADD COLUMN feeling VARCHAR(10);
@@ -49,7 +49,7 @@ AI-powered personalized meditation app. User describes their current mood/situat
 
 ### 6. Vercel Production
 - [ ] Set `CRON_SECRET` to a strong random string (not `craftedday-cron-2026`)
-- [ ] Wire `craftedday.com` custom domain
+- [x] Wire `craftedday.com` custom domain
 - [ ] Confirm all env vars set (Clerk live keys, etc.)
 - [ ] Verify cron runs at 5am UTC (`/api/cron/generate-daily`)
 

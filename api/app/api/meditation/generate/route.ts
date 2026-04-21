@@ -9,6 +9,7 @@ import type { VoiceGender } from "@/lib/elevenlabs";
 import { log, logError } from "@/lib/log";
 import { getOrCreateProfile } from "@/lib/user";
 import { getUserId, isAuthError } from "@/lib/auth";
+import { checkSubscriptionAndQuota, deductCustomMinutes, CUSTOM_MINUTES_LIMIT } from "@/lib/subscription";
 
 export const runtime = "nodejs";
 export const maxDuration = 800;
@@ -49,6 +50,21 @@ export async function POST(req: NextRequest) {
         { error: `duration must be ${MIN_DURATION}-${MAX_DURATION} seconds` },
         { status: 400 },
       );
+    }
+
+    const requestedMinutes = Math.round(targetSeconds / 60);
+    const quota = await checkSubscriptionAndQuota(userId, requestedMinutes);
+    if (!quota.ok) {
+      const body =
+        quota.reason === "quota_exceeded"
+          ? {
+              error: "quota_exceeded",
+              minutesUsed: quota.minutesUsed,
+              minutesLimit: CUSTOM_MINUTES_LIMIT,
+              periodEnd: quota.periodEnd,
+            }
+          : { error: "not_subscribed" };
+      return NextResponse.json(body, { status: 429 });
     }
 
     const profile = await getOrCreateProfile(userId);
@@ -101,6 +117,9 @@ export async function POST(req: NextRequest) {
       duration: targetSeconds,
     });
     log(`gen:${reqId}`, "db inserted", { meditationId });
+
+    // Deduct only after everything is saved and available.
+    await deductCustomMinutes(userId, requestedMinutes);
 
     log(`gen:${reqId}`, "done", { totalMs: Date.now() - startTotal });
 

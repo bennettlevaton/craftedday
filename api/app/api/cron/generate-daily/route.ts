@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
 import { dailySessions, meditations, userProfiles } from "@/db/schema";
@@ -65,13 +65,7 @@ export async function GET(req: NextRequest) {
       const voiceGender: VoiceGender = profile.voiceGender === "male" ? "male" : "female";
       const prompt = dailyPrompt(profile);
 
-      const lastSession = await db
-        .select({ duration: meditations.duration })
-        .from(meditations)
-        .where(eq(meditations.userId, userId))
-        .orderBy(desc(meditations.createdAt))
-        .limit(1);
-      const targetSeconds = lastSession[0]?.duration ?? DEFAULT_DURATION;
+      const targetSeconds = DEFAULT_DURATION;
 
       const meditationId = randomUUID();
       const { script, title } = await generateScript(prompt, targetSeconds, {
@@ -88,7 +82,7 @@ export async function GET(req: NextRequest) {
       const audioUrl = `${R2_PUBLIC_URL}/${key}`;
 
       await db.insert(meditations).values({ id: meditationId, userId, prompt, title, script, audioUrl, duration: targetSeconds });
-      await db.insert(dailySessions).values({ userId, date, meditationId });
+      await db.insert(dailySessions).values({ userId, date, meditationId }).onConflictDoNothing();
 
       counts.generated++;
       log("cron:daily", "generated", { userId, meditationId });
@@ -98,11 +92,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Process in parallel batches of 5 to stay within rate limits + timeout
-  const BATCH_SIZE = 3;
-  for (let i = 0; i < allUsers.length; i += BATCH_SIZE) {
-    const batch = allUsers.slice(i, i + BATCH_SIZE);
-    await Promise.allSettled(batch.map(generateForUser));
+  for (const user of allUsers) {
+    await generateForUser(user);
   }
 
   log("cron:daily", "done", counts);

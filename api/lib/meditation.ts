@@ -304,10 +304,8 @@ DURATION TARGETS — aim for all three:
 - Silence: ~${silenceSeconds}s total (~${breakTagCount} break tags × 3s each)
 - Combined: approximately ${targetSeconds}s of audio
 
-Break tags are capped at 3s each by the audio engine. Use stacked tags for longer silences:
-  6s pause → <break time="3s" /> <break time="3s" />
-  9s pause → <break time="3s" /> <break time="3s" /> <break time="3s" />
-Do NOT write <break time="6s" /> — it will only produce 3s.
+SILENCE BUDGET: ${silenceSeconds}s total for this session. Do not exceed it.
+Distribute naturally — short gaps between sentences (3-6s), medium pauses after body instructions (9-15s), longer independent breathing stretches in the middle and close (20-45s). Your total break time across the entire script must stay within ${silenceSeconds}s.
 
 EXPERIENCE LEVEL: ${silenceGuidance}.
 
@@ -413,8 +411,8 @@ export async function generateScript(
   return { script: normalizeBreakTags(script), title };
 }
 
-// Convert any <break time="Xs" /> where X > 3 into stacked 3s tags to preserve
-// intended silence duration — ElevenLabs caps single tags at ~3s.
+// Convert any <break time="Xs" /> where X > 3 into stacked 3s tags so ElevenLabs
+// honours the full intended silence (single tags cap at ~3s).
 function normalizeBreakTags(script: string): string {
   return script.replace(/<break time="(\d+(?:\.\d+)?)s"\s*\/>/g, (original, secs) => {
     const total = parseFloat(secs);

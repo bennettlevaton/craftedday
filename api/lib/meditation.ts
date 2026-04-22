@@ -11,24 +11,16 @@ const PLANNER_MODEL = "claude-haiku-4-5";   // fast planner with bounded thinkin
 const WRITER_MODEL = "claude-opus-4-7";     // best writer, no thinking overhead
 const SUMMARY_MODEL = "claude-sonnet-4-6";
 
-// Spoken chars per second — calibrated for this voice at speed 0.9, excluding break tags.
-const SPOKEN_CHARS_PER_SECOND = 18;
-
-const TOTAL_CHARS_PER_SECOND = 16; // total script chars (including break tag markup)
+// Total script chars per second of audio (including break tag markup) — calibrated empirically.
+const CHARS_PER_SECOND = 14;
 
 function getTargetCharBudget(targetSeconds: number) {
-  const target = Math.round(targetSeconds * TOTAL_CHARS_PER_SECOND);
+  const target = Math.round(targetSeconds * CHARS_PER_SECOND);
   return { target, min: target - 100, max: target + 400 };
 }
 
 function estimateScriptDuration(script: string): number {
-  let breakSeconds = 0;
-  const breakRe = /<break time="(\d+(?:\.\d+)?)s"\s*\/>/g;
-  let m;
-  // ElevenLabs caps each individual break tag at ~3s regardless of value.
-  while ((m = breakRe.exec(script)) !== null) breakSeconds += Math.min(parseFloat(m[1]), 3);
-  const spokenChars = script.replace(/<break[^>]+\/>/g, "").replace(/\s+/g, " ").trim().length;
-  return breakSeconds + spokenChars / SPOKEN_CHARS_PER_SECOND;
+  return script.length / CHARS_PER_SECOND;
 }
 
 type ListenerContext = {
@@ -284,38 +276,40 @@ Rules:
   return textBlock.text.trim();
 }
 
+const SPOKEN_CHARS_PER_SECOND = 18; // spoken text only, calibrated at speed 0.9
+const SECS_PER_BREAK_TAG = 3;       // ElevenLabs caps single break tags at ~3s
+
 function buildWriterPrompt(targetSeconds: number, listenerBlock: string, timeOfDay: string | null, experienceLevel: string | null): string {
-  // More experienced = more silence; beginners need denser guidance
   const spokenFraction = experienceLevel === "experienced" ? 0.45
     : experienceLevel === "intermediate" ? 0.55
     : 0.65; // beginner or unknown
+
   const spokenSeconds = Math.round(targetSeconds * spokenFraction);
-  const breakSeconds = targetSeconds - spokenSeconds;
+  const silenceSeconds = targetSeconds - spokenSeconds;
   const spokenChars = Math.round(spokenSeconds * SPOKEN_CHARS_PER_SECOND);
-  const minEstimated = Math.round(targetSeconds * 0.92);
-  const maxEstimated = Math.round(targetSeconds * 1.10);
+  const breakTagCount = Math.round(silenceSeconds / SECS_PER_BREAK_TAG);
+
+  const silenceGuidance = experienceLevel === "experienced"
+    ? "transition to independent silences (30–60s) early, sparse voice in the final third"
+    : experienceLevel === "intermediate"
+    ? "standard arc, independent silences of 15–30s in the middle and close"
+    : "stay close, independent silences of max 10–15s before a return cue";
 
   return `${listenerBlock}You are writing a guided meditation script. Follow the plan below EXACTLY.
 
 ${timeOfDay ? `TIME OF DAY: ${timeOfDay}` : "TIME OF DAY: unknown — the listener may use this session any time. Keep tone universally grounded."}
 
-DURATION REQUIREMENT
-This session must produce approximately ${targetSeconds} seconds of audio. Audio duration = spoken time + break time.
+DURATION TARGETS — aim for all three:
+- Spoken text: ~${spokenChars} characters (everything that gets narrated aloud, not counting break tags)
+- Silence: ~${silenceSeconds}s total (~${breakTagCount} break tags × 3s each)
+- Combined: approximately ${targetSeconds}s of audio
 
-Your targets:
-- Spoken text: ~${spokenChars} characters (not counting break tag markup)
-- Break silence: ~${breakSeconds} total seconds across all <break> tags
-- These combine to approximately ${targetSeconds}s of audio
+Break tags are capped at 3s each by the audio engine. Use stacked tags for longer silences:
+  6s pause → <break time="3s" /> <break time="3s" />
+  9s pause → <break time="3s" /> <break time="3s" /> <break time="3s" />
+Do NOT write <break time="6s" /> — it will only produce 3s.
 
-DURATION SELF-CHECK — do this before writing your closing:
-1. Count your break tags — each tag contributes MAX 3s regardless of value (ElevenLabs hard cap). <break time="10s" /> = 3s, not 10s. To get 12s of silence you MUST stack four tags: <break time="3s" /> <break time="3s" /> <break time="3s" /> <break time="3s" />
-2. Sum (number of break tags × 3s) → your breakSeconds
-3. Count characters excluding break tags → your spokenChars
-4. estimatedDuration = breakSeconds + spokenChars ÷ 18
-5. If estimatedDuration < ${minEstimated}s, do NOT close yet — add more stacked break tags and spoken reflection
-6. Target range: ${minEstimated}–${maxEstimated}s
-
-Do NOT close the meditation until your self-check passes.
+EXPERIENCE LEVEL: ${silenceGuidance}.
 
 FORMATTING FOR SPOKEN DURATION
 - One to two sentences per paragraph. Short lines. Blank lines between paragraphs.
@@ -346,45 +340,6 @@ OUTPUT
 - Script text with break tags only. No title, headers, or explanation.`;
 }
 
-async function expandScript(
-  script: string,
-  targetChars: number,
-  minChars: number,
-): Promise<string> {
-  log("expand", "script under minimum, expanding", {
-    currentChars: script.length,
-    minChars,
-    targetChars,
-  });
-  const response = await anthropic.messages.create({
-    model: WRITER_MODEL,
-    max_tokens: 20000,
-    messages: [
-      {
-        role: "user",
-        content: `This meditation script is too short (${script.length} characters, minimum is ${minChars}).
-
-Expand it to approximately ${targetChars} characters. Preserve the exact tone, structure, and arc. Add:
-- More spacious pacing between phrases
-- Additional grounded reflection after key transitions
-- Gentle sensory cues (breath, body sensation, temperature, weight)
-- Deeper breathing stretches in the middle and closing sections
-
-Do NOT add new concepts or change the meditation's focus.
-Do NOT add headers, titles, or explanations.
-Output only the expanded script with break tags.
-
-Original script:
-${script}`,
-      },
-    ],
-  });
-  const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") return script;
-  const expanded = textBlock.text.trim();
-  log("expand", "done", { before: script.length, after: expanded.length, targetChars });
-  return expanded;
-}
 
 export async function generateScript(
   userPrompt: string,
@@ -421,7 +376,7 @@ export async function generateScript(
     messages: [
       {
         role: "user",
-        content: `Plan:\n${plan}\n\nListener input: "${userPrompt}"\n\nWrite the meditation script now. Do not close the meditation until you have written at least ${minChars} characters. Target ${Math.round(targetChars * 1.25)} characters.`,
+        content: `Plan:\n${plan}\n\nListener input: "${userPrompt}"\n\nWrite the meditation script now.`,
       },
     ],
   });
@@ -435,22 +390,13 @@ export async function generateScript(
   log("write", "script ready", {
     ms: Date.now() - started,
     scriptChars: script.length,
-    targetChars,
-    minChars,
-    maxChars,
-    underBy: Math.max(0, minChars - script.length),
+    estimatedSeconds: Math.round(estimateScriptDuration(script)),
+    targetSeconds,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
     cacheWrite: response.usage.cache_creation_input_tokens ?? 0,
     cacheRead: response.usage.cache_read_input_tokens ?? 0,
   });
-
-  // Expand only if estimated audio duration is genuinely short (>10% under target)
-  const estimatedSeconds = estimateScriptDuration(script);
-  log("write", "duration estimate", { estimatedSeconds: Math.round(estimatedSeconds), targetSeconds, scriptChars: script.length });
-  if (estimatedSeconds < targetSeconds * 0.95) {
-    script = await expandScript(script, targetChars, minChars);
-  }
 
   // Extract title from plan JSON (strip markdown fences if Haiku wrapped it)
   let title = "A moment for you";
@@ -464,7 +410,21 @@ export async function generateScript(
     // Plan might not be valid JSON; use default title
   }
 
-  return { script, title };
+  return { script: normalizeBreakTags(script), title };
+}
+
+// Convert any <break time="Xs" /> where X > 3 into stacked 3s tags to preserve
+// intended silence duration — ElevenLabs caps single tags at ~3s.
+function normalizeBreakTags(script: string): string {
+  return script.replace(/<break time="(\d+(?:\.\d+)?)s"\s*\/>/g, (original, secs) => {
+    const total = parseFloat(secs);
+    if (total <= 3) return original;
+    const full = Math.floor(total / 3);
+    const remainder = Math.round((total % 3) * 10) / 10;
+    const tags = Array(full).fill('<break time="3s" />');
+    if (remainder > 0) tags.push(`<break time="${remainder}s" />`);
+    return tags.join(' ');
+  });
 }
 
 // 10-second trailing silence so sessions don't end abruptly.

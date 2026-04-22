@@ -526,7 +526,7 @@ async function synthesizeChunk(
     model_id: "eleven_v3",
     output_format: "pcm_22050",
     voice_settings: voiceSettings,
-  });
+  }, { timeoutInSeconds: 300 });
   const parts: Buffer[] = [];
   for await (const chunk of stream) {
     parts.push(Buffer.from(chunk));

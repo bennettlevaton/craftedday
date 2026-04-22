@@ -18,8 +18,6 @@ class HomeScreen extends StatefulWidget {
 const _durationOptions = [
   (300, '5 min'),
   (600, '10 min'),
-  (900, '15 min'),
-  (1200, '20 min'),
 ];
 
 class _HomeScreenState extends State<HomeScreen> {

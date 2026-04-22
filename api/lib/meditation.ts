@@ -1,4 +1,6 @@
 import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { spawn } from "child_process";
+import ffmpegPath from "@ffmpeg-installer/ffmpeg";
 import { anthropic } from "./claude";
 import { elevenlabs, VOICES, type VoiceGender } from "./elevenlabs";
 import { log } from "./log";
@@ -8,6 +10,15 @@ import { meditations, userProfiles } from "@/db/schema";
 const PLANNER_MODEL = "claude-haiku-4-5";   // fast planner with bounded thinking
 const WRITER_MODEL = "claude-opus-4-7";     // best writer, no thinking overhead
 const SUMMARY_MODEL = "claude-sonnet-4-6";
+
+// Calibrated from eleven_v3 at speed 1.0: ~2656 chars → 166s ≈ 16 chars/sec.
+// We run at speed 0.9, giving ~11% headroom on top of char budget.
+const CHARS_PER_SECOND = 16;
+
+function getTargetCharBudget(targetSeconds: number) {
+  const target = Math.round(targetSeconds * CHARS_PER_SECOND);
+  return { target, min: target - 100, max: target + 400 };
+}
 
 type ListenerContext = {
   name: string | null;
@@ -75,11 +86,7 @@ function buildListenerContextBlock(ctx: ListenerContext): string {
 function buildSystemPrompt(targetSeconds: number, listenerBlock: string, timeOfDay: string): string {
   const minutes = Math.round(targetSeconds / 60);
   const label = targetSeconds < 60 ? `${targetSeconds} seconds` : `${minutes} minute`;
-
-  // TTS at speed 1.0 → effective speaking rate ~140 wpm.
-  // Targeting 70% narration. Claude consistently undershoots by ~10%,
-  // so overshooting the target compensates.
-  const wordsTarget = Math.round((targetSeconds / 60) * 140 * 0.80);
+  const { target: targetChars, min: minChars, max: maxChars } = getTargetCharBudget(targetSeconds);
 
   return `${listenerBlock}You are writing a guided meditation script for audio narration. Write in a warm, intimate, personal tone — as if you are meditating alongside the listener, not instructing them from above.
 
@@ -91,12 +98,22 @@ Before writing a single line of the script, plan silently:
 2. Which meditation technique(s) fit — box breathing, body scan, progressive relaxation, metta, noting, visualization, somatic grounding, open awareness? Pick 1-2. Don't announce them.
 3. What's the arc — settle, anchor, work (addressing their input), return, close?
 4. Where will the longer silent stretches go, and how long?
-5. Will this plan actually land near ${label}? Effective speaking rate is ~140 words/minute. Target ~${wordsTarget} words of narration (not counting break tags), with the rest as silence. Sanity-check your word count before you write.
+5. Will this plan hit the character target? Check your draft length before finishing.
 
 Then draft the script.
 
-TARGET DURATION: ${label} (MINIMUM — going up to 30 seconds over is fine, going under is not)
-Users pay for a specific length. Aim to hit the target precisely; if you fall short, add one more breath cycle or a gentle close rather than cutting abrupt. Never run more than 30 seconds over.
+DURATION REQUIREMENT — NON-NEGOTIABLE
+This script must produce approximately ${targetSeconds} seconds of spoken audio.
+Target: ${targetChars} characters. Acceptable range: ${minChars}–${maxChars} characters.
+Do not end the script until you are inside this range. If your draft is under ${minChars} characters, keep writing — add more breath pacing, sensory cues, and grounded reflection until you reach the target.
+Never run more than 30 seconds over. Users pay for a specific length.
+
+FORMATTING FOR SPOKEN DURATION
+- One to two sentences per paragraph. Short lines. Blank lines between paragraphs.
+- Do not write dense prose — this must sound natural read aloud at a calm, unhurried pace.
+- Favor spacious pacing over literary compression.
+- Occasional ellipses (...) for natural pause within a line.
+- No headers, titles, or bullet points inside the script.
 
 THE MOST IMPORTANT RULE
 The listener told you something specific. The meditation must actively work through it. Name their situation (without quoting them back verbatim), invite release of whatever's heavy in it, make space, and help them build a new way of meeting it. A generic calm-down script is a failure. If they said "I'm anxious about a presentation," the meditation releases that anxiety and quietly rehearses their steady, grounded self walking into the room. If they said "I can't sleep," the meditation slows the nervous system and lets the day's noise drain out of them. Their input is the spine of the session, not a footnote.
@@ -198,14 +215,14 @@ async function generatePlan(
 ): Promise<string> {
   const started = Date.now();
   const minutes = Math.round(targetSeconds / 60);
-  const wordsTarget = Math.round((targetSeconds / 60) * 140 * 0.80);
+  const { target: targetChars } = getTargetCharBudget(targetSeconds);
 
   const plannerPrompt = `${listenerBlock}You are planning a guided meditation session. Output ONLY valid JSON — no markdown, no explanation.
 
 Listener input: "${userPrompt}"
 Time of day: ${timeOfDay}
 Target duration: ${minutes} minutes (${targetSeconds} seconds)
-Effective speaking rate: ~140 wpm. Target ~${wordsTarget} total words of narration.
+Target script length: ~${targetChars} characters
 
 Output this exact JSON:
 {
@@ -219,7 +236,6 @@ Output this exact JSON:
     {
       "section": "section name",
       "duration_seconds": 0,
-      "words": 0,
       "guidance_density": "high | medium | low | silent",
       "notes": "what specifically happens — be concrete"
     }
@@ -228,8 +244,6 @@ Output this exact JSON:
 
 Rules:
 - arc duration_seconds must sum to EXACTLY ${targetSeconds}
-- words = Math.round(duration_seconds * (140/60)) for high density, * 0.6 for medium, * 0.2 for low, 0-10 for silent
-- Total words across arc must be ~${wordsTarget}
 - Must include: settle (body scan), release, envision_opposite (the transformed version of themselves), return, close
 - Silent sections are mandatory — at least 2 of them, 60-120s each. These are where the listener breathes alone.
 - Total silent section time must be at least ${Math.round(targetSeconds * 0.20)}s (20% of session)
@@ -260,11 +274,27 @@ Rules:
 }
 
 function buildWriterPrompt(targetSeconds: number, listenerBlock: string, timeOfDay: string): string {
-  const wordsTarget = Math.round((targetSeconds / 60) * 140 * 0.80);
+  const { target: targetChars, min: minChars, max: maxChars } = getTargetCharBudget(targetSeconds);
+  // Inflate the target we show Opus by 25% — it consistently undershoots by ~20%.
+  // The hard minimum stays at minChars so we don't overshoot into unusable territory.
+  const inflatedTarget = Math.round(targetChars * 1.25);
   return `${listenerBlock}You are writing a guided meditation script. Follow the plan below EXACTLY.
 
 TIME OF DAY: ${timeOfDay}
-TOTAL WORD TARGET: ~${wordsTarget} words of narration
+
+DURATION REQUIREMENT — HARD STOP
+Write approximately ${inflatedTarget} characters of spoken script.
+Hard minimum: ${minChars} characters. Hard maximum: ${maxChars} characters.
+Do NOT close the meditation — no "gently return", no "open your eyes", no closing breath — until your script is at least ${minChars} characters.
+Keep the meditation open and spacious. If you reach a natural close before ${minChars} chars, continue with an additional silent breathing stretch, a body awareness section, or a gentle reflection before closing.
+You will almost certainly write less than you think. Err long.
+
+FORMATTING FOR SPOKEN DURATION
+- One to two sentences per paragraph. Short lines. Blank lines between paragraphs.
+- Do not write dense prose — this must sound natural read aloud at a calm, unhurried pace.
+- Favor spacious pacing over literary compression.
+- Occasional ellipses (...) for natural pause within a line.
+- No headers, titles, or bullet points inside the script.
 
 VOICE
 - Warm, intimate, human. Second person ("you") for guidance, "we" for shared moments.
@@ -288,6 +318,46 @@ OUTPUT
 - Script text with break tags only. No title, headers, or explanation.`;
 }
 
+async function expandScript(
+  script: string,
+  targetChars: number,
+  minChars: number,
+): Promise<string> {
+  log("expand", "script under minimum, expanding", {
+    currentChars: script.length,
+    minChars,
+    targetChars,
+  });
+  const response = await anthropic.messages.create({
+    model: WRITER_MODEL,
+    max_tokens: 20000,
+    messages: [
+      {
+        role: "user",
+        content: `This meditation script is too short (${script.length} characters, minimum is ${minChars}).
+
+Expand it to approximately ${targetChars} characters. Preserve the exact tone, structure, and arc. Add:
+- More spacious pacing between phrases
+- Additional grounded reflection after key transitions
+- Gentle sensory cues (breath, body sensation, temperature, weight)
+- Deeper breathing stretches in the middle and closing sections
+
+Do NOT add new concepts or change the meditation's focus.
+Do NOT add headers, titles, or explanations.
+Output only the expanded script with break tags.
+
+Original script:
+${script}`,
+      },
+    ],
+  });
+  const textBlock = response.content.find((b) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") return script;
+  const expanded = textBlock.text.trim();
+  log("expand", "done", { before: script.length, after: expanded.length, targetChars });
+  return expanded;
+}
+
 export async function generateScript(
   userPrompt: string,
   targetSeconds: number,
@@ -295,6 +365,7 @@ export async function generateScript(
 ): Promise<{ script: string; title: string }> {
   const started = Date.now();
   const listenerBlock = buildListenerContextBlock(listenerContext);
+  const { target: targetChars, min: minChars, max: maxChars } = getTargetCharBudget(targetSeconds);
 
   const hour = new Date().getHours();
   const timeOfDay =
@@ -303,14 +374,14 @@ export async function generateScript(
     hour < 17 ? "afternoon" :
     hour < 21 ? "evening" : "night";
 
-  log("plan", "generating", { targetSeconds, timeOfDay, promptLen: userPrompt.length });
+  log("plan", "generating", { targetSeconds, targetChars, minChars, maxChars, timeOfDay, promptLen: userPrompt.length });
 
-  // Phase 1: Haiku generates a structured plan with bounded thinking
+  // Phase 1: Haiku generates a structured plan
   const plan = await generatePlan(userPrompt, targetSeconds, listenerBlock, timeOfDay);
 
   log("write", "generating script from plan");
 
-  // Phase 2: Opus writes the script from the plan, no thinking
+  // Phase 2: Opus writes the script from the plan
   const response = await anthropic.messages.create({
     model: WRITER_MODEL,
     max_tokens: 20000,
@@ -318,7 +389,7 @@ export async function generateScript(
     messages: [
       {
         role: "user",
-        content: `Plan:\n${plan}\n\nListener input: "${userPrompt}"\n\nWrite the meditation script now.`,
+        content: `Plan:\n${plan}\n\nListener input: "${userPrompt}"\n\nWrite the meditation script now. Do not close the meditation until you have written at least ${minChars} characters. Target ${Math.round(targetChars * 1.25)} characters.`,
       },
     ],
   });
@@ -327,12 +398,31 @@ export async function generateScript(
   if (!textBlock || textBlock.type !== "text") {
     throw new Error("No text block in Opus response");
   }
-  const script = textBlock.text.trim();
+  let script = textBlock.text.trim();
 
-  // Extract title from the plan JSON
+  log("write", "script ready", {
+    ms: Date.now() - started,
+    scriptChars: script.length,
+    targetChars,
+    minChars,
+    maxChars,
+    underBy: Math.max(0, minChars - script.length),
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    cacheWrite: response.usage.cache_creation_input_tokens ?? 0,
+    cacheRead: response.usage.cache_read_input_tokens ?? 0,
+  });
+
+  // Single expansion pass as safety net only
+  if (script.length < minChars) {
+    script = await expandScript(script, targetChars, minChars);
+  }
+
+  // Extract title from plan JSON (strip markdown fences if Haiku wrapped it)
   let title = "A moment for you";
   try {
-    const planJson = JSON.parse(plan);
+    const stripped = plan.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+    const planJson = JSON.parse(stripped);
     if (typeof planJson.title === "string" && planJson.title.length > 0) {
       title = planJson.title;
     }
@@ -340,15 +430,6 @@ export async function generateScript(
     // Plan might not be valid JSON; use default title
   }
 
-  log("write", "script ready", {
-    ms: Date.now() - started,
-    scriptLen: script.length,
-    title,
-    inputTokens: response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens,
-    cacheWrite: response.usage.cache_creation_input_tokens ?? 0,
-    cacheRead: response.usage.cache_read_input_tokens ?? 0,
-  });
   return { script, title };
 }
 
@@ -357,45 +438,159 @@ export async function generateScript(
 const TRAILING_SILENCE =
   ' <break time="3s" /> <break time="3s" /> <break time="3s" /> <break time="3s" />';
 
+// eleven_v3 hard limit is ~5 min per request. Split long scripts into 3 chunks
+// at natural section-transition boundaries (lines ending with multiple break tags
+// followed by a blank line) so the MP3 join lands in silence.
+function splitScriptIntoChunks(script: string): string[] {
+  // Collect all paragraph-break positions (\n\n)
+  const breakPositions: number[] = [];
+  let i = 0;
+  while (i < script.length) {
+    const idx = script.indexOf("\n\n", i);
+    if (idx === -1) break;
+    breakPositions.push(idx);
+    i = idx + 2;
+  }
+
+  if (breakPositions.length < 2) return [script];
+
+  // Prefer split points where the preceding line ends with 2+ stacked break tags
+  // (section transitions). Score = multi-break bonus minus distance penalty.
+  const MULTI_BREAK_RE = /(<break time="\d+s" \/>[\s]*){2,}$/;
+  const MIN_CHUNK = 300; // reject splits that produce chunks smaller than this
+
+  function findBestSplit(targetPos: number, exclude?: number): number {
+    // Tight window (±12%) keeps chunks near even thirds.
+    // Fall back to ±25% only if nothing found in tight window.
+    const eligible = (p: number) => !exclude || Math.abs(p - exclude) > MIN_CHUNK;
+    const inWindow = (p: number, w: number) => Math.abs(p - targetPos) <= w;
+
+    const tight = breakPositions.filter((p) => eligible(p) && inWindow(p, script.length * 0.12));
+    const pool = tight.length > 0
+      ? tight
+      : breakPositions.filter((p) => eligible(p) && inWindow(p, script.length * 0.25));
+    if (pool.length === 0) return targetPos;
+
+    // Score: prefer multi-break boundaries, but distance dominates within the window.
+    // Multi-break bonus is 0.3 — not enough to pull a split far from the target.
+    return pool
+      .map((p) => {
+        const preceding = script.slice(Math.max(0, p - 120), p).trimEnd();
+        const hasMultiBreak = MULTI_BREAK_RE.test(preceding);
+        const distancePenalty = Math.abs(p - targetPos) / script.length;
+        return { p, score: (hasMultiBreak ? 0.3 : 0) - distancePenalty };
+      })
+      .sort((a, b) => b.score - a.score)[0].p;
+  }
+
+  const split1 = findBestSplit(Math.floor(script.length / 3));
+  const split2 = findBestSplit(Math.floor((script.length * 2) / 3), split1);
+
+  const chunks = [
+    script.slice(0, split1).trim(),
+    script.slice(split1, split2).trim(),
+    script.slice(split2).trim(),
+  ].filter((c) => c.replace(/<break[^>]+\/>/g, "").trim().length >= MIN_CHUNK);
+
+  // If splitting produced fewer than 2 usable chunks, return whole script
+  if (chunks.length < 2) return [script];
+  return chunks;
+}
+
+// PCM spec: 22050 Hz, 16-bit signed little-endian, mono.
+const PCM_SAMPLE_RATE = 22050;
+const PCM_BYTE_RATE = PCM_SAMPLE_RATE * 2; // 16-bit mono
+
+function pcmToMp3(pcm: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const ff = spawn(ffmpegPath.path, [
+      "-f", "s16le", "-ar", String(PCM_SAMPLE_RATE), "-ac", "1", "-i", "pipe:0",
+      "-codec:a", "libmp3lame", "-b:a", "128k", "-f", "mp3", "pipe:1",
+    ]);
+    const out: Buffer[] = [];
+    ff.stdout.on("data", (d: Buffer) => out.push(d));
+    ff.stderr.on("data", () => {}); // suppress ffmpeg progress noise
+    ff.on("close", (code) => code === 0 ? resolve(Buffer.concat(out)) : reject(new Error(`ffmpeg exited ${code}`)));
+    ff.stdin.write(pcm);
+    ff.stdin.end();
+  });
+}
+
+async function synthesizeChunk(
+  text: string,
+  voiceId: string,
+  voiceSettings: Record<string, unknown>,
+): Promise<Buffer> {
+  const stream = await elevenlabs.textToSpeech.convert(voiceId, {
+    text,
+    model_id: "eleven_v3",
+    output_format: "pcm_22050",
+    voice_settings: voiceSettings,
+  });
+  const parts: Buffer[] = [];
+  for await (const chunk of stream) {
+    parts.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(parts);
+}""
+
 export async function generateAudio(
   script: string,
   voiceGender: VoiceGender,
+  targetSeconds: number,
 ): Promise<Buffer> {
   const started = Date.now();
   const voiceId = VOICES[voiceGender];
-  const scriptWithTail = script.trimEnd() + TRAILING_SILENCE;
   const voiceSettings = {
-    stability: .2,
-    similarity_boost: 1,
-    style: 0.0,
+    stability: 0.7,
+    similarity_boost: 0.8,
+    style: 0.35,
     use_speaker_boost: true,
-    speed: 1.0,
+    speed: 0.9,
   };
+
+  const chunks = splitScriptIntoChunks(script);
   log("elevenlabs", "synthesizing audio", {
     voiceGender,
     voiceId,
-    scriptLen: script.length,
-    model: "eleven_turbo_v2_5",
+    scriptChars: script.length,
+    targetSeconds,
+    chunks: chunks.length,
+    chunkChars: chunks.map((c) => c.length),
+    model: "eleven_v3",
     voiceSettings,
   });
 
   try {
-    const stream = await elevenlabs.textToSpeech.convert(voiceId, {
-      text: scriptWithTail,
-      model_id: "eleven_turbo_v2_5",
-      output_format: "mp3_44100_128",
-      voice_settings: voiceSettings,
-    });
+    // Add trailing silence only to the last chunk, then fire all in parallel.
+    const texts = chunks.map((c, idx) =>
+      idx === chunks.length - 1 ? c.trimEnd() + TRAILING_SILENCE : c,
+    );
 
-    const chunks: Buffer[] = [];
-    for await (const chunk of stream) {
-      chunks.push(Buffer.from(chunk));
-    }
-    const buf = Buffer.concat(chunks);
+    // Raw PCM chunks — no headers, trivially concatenatable.
+    const pcmChunks = await Promise.all(
+      texts.map((text) => synthesizeChunk(text, voiceId, voiceSettings)),
+    );
+    const pcmData = Buffer.concat(pcmChunks);
+    const buf = await pcmToMp3(pcmData);
+
+    // Duration from raw PCM before encoding (exact)
+    const estimatedDurationSeconds = Math.round(pcmData.length / PCM_BYTE_RATE);
+    const durationErrorSeconds = estimatedDurationSeconds - targetSeconds;
+    const durationErrorPct = Math.round((durationErrorSeconds / targetSeconds) * 100);
+    const observedCharsPerSecond = +(script.length / estimatedDurationSeconds).toFixed(2);
+
     log("elevenlabs", "audio ready", {
       ms: Date.now() - started,
       bytes: buf.length,
+      targetSeconds,
+      estimatedDurationSeconds,
+      durationErrorSeconds,
+      durationErrorPct: `${durationErrorPct > 0 ? "+" : ""}${durationErrorPct}%`,
+      scriptChars: script.length,
+      observedCharsPerSecond,
     });
+
     return buf;
   } catch (err: unknown) {
     if (err && typeof err === "object" && "body" in err) {

@@ -14,8 +14,8 @@ export const maxDuration = 800;
 
 const DEFAULT_DURATION = 600; // 10 min
 
-function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
+function todayEst(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
 
 function dailyPrompt(
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const date = todayUtc();
+  const date = todayEst();
   log("cron:daily", "start", { date });
 
   // All onboarded users from user_profiles
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
         primaryGoalCustom: null,
         preferenceSummary: null,
       });
-      const audio = await generateAudio(script, voiceGender);
+      const audio = await generateAudio(script, voiceGender, targetSeconds);
 
       const key = `${userId}/${meditationId}.mp3`;
       await r2.send(new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, Body: audio, ContentType: "audio/mpeg" }));

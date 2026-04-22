@@ -20,7 +20,7 @@ type Body = {
 };
 
 const MIN_DURATION = 30;
-const MAX_DURATION = 1200; // 20 min hard cap
+const MAX_DURATION = 600; // 10 min hard cap
 const DEFAULT_DURATION = 600; // 10 min
 
 export async function POST(req: NextRequest) {
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       primaryGoalCustom: profile.primaryGoalCustom,
       preferenceSummary: profile.preferenceSummary,
     });
-    const audio = await generateAudio(script, voiceGender);
+    const audio = await generateAudio(script, voiceGender, targetSeconds);
 
     const key = `${userId}/${meditationId}.mp3`;
     const uploadStart = Date.now();

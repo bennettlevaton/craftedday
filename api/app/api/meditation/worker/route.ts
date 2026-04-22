@@ -52,9 +52,11 @@ export async function POST(req: NextRequest) {
 
   log("worker", "claimed job", { jobId: job.id, userId: job.userId, source: job.source });
 
+  const t = { jobStart: Date.now(), scriptMs: 0, audioMs: 0, uploadMs: 0, dbMs: 0 };
   try {
     const profile = JSON.parse(job.profileSnapshot);
 
+    let ts = Date.now();
     const { script, title } = await generateScript(job.prompt, job.durationSeconds, {
       name: profile.name,
       experienceLevel: profile.experienceLevel,
@@ -62,13 +64,19 @@ export async function POST(req: NextRequest) {
       primaryGoalCustom: profile.primaryGoalCustom,
       preferenceSummary: profile.preferenceSummary,
     });
+    t.scriptMs = Date.now() - ts;
 
+    ts = Date.now();
     const audio = await generateAudio(script, job.voiceGender as VoiceGender, job.durationSeconds);
+    t.audioMs = Date.now() - ts;
 
+    ts = Date.now();
     const key = `${job.userId}/${job.id}.mp3`;
     await r2.send(new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, Body: audio, ContentType: "audio/mpeg" }));
+    t.uploadMs = Date.now() - ts;
     const audioUrl = `${R2_PUBLIC_URL}/${key}`;
 
+    ts = Date.now();
     await db.insert(meditations).values({
       id: job.id,
       userId: job.userId,
@@ -93,8 +101,19 @@ export async function POST(req: NextRequest) {
       .update(meditationJobs)
       .set({ status: "done", audioUrl, title, script, completedAt: new Date() })
       .where(eq(meditationJobs.id, job.id));
+    t.dbMs = Date.now() - ts;
 
-    log("worker", "job done", { jobId: job.id, userId: job.userId });
+    const totalMs = Date.now() - t.jobStart;
+    log("worker", "job done", {
+      jobId: job.id,
+      totalMs,
+      steps: {
+        scriptMs: t.scriptMs,
+        audioMs: t.audioMs,
+        uploadMs: t.uploadMs,
+        dbMs: t.dbMs,
+      },
+    });
   } catch (err) {
     logError(`worker:${job.id}`, err);
     await db

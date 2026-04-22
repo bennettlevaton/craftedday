@@ -11,13 +11,23 @@ const PLANNER_MODEL = "claude-haiku-4-5";   // fast planner with bounded thinkin
 const WRITER_MODEL = "claude-opus-4-7";     // best writer, no thinking overhead
 const SUMMARY_MODEL = "claude-sonnet-4-6";
 
-// Calibrated from eleven_v3 at speed 1.0: ~2656 chars → 166s ≈ 16 chars/sec.
-// We run at speed 0.9, giving ~11% headroom on top of char budget.
-const CHARS_PER_SECOND = 16;
+// Spoken chars per second — calibrated for this voice at speed 0.9, excluding break tags.
+const SPOKEN_CHARS_PER_SECOND = 18;
+
+const TOTAL_CHARS_PER_SECOND = 16; // total script chars (including break tag markup)
 
 function getTargetCharBudget(targetSeconds: number) {
-  const target = Math.round(targetSeconds * CHARS_PER_SECOND);
+  const target = Math.round(targetSeconds * TOTAL_CHARS_PER_SECOND);
   return { target, min: target - 100, max: target + 400 };
+}
+
+function estimateScriptDuration(script: string): number {
+  let breakSeconds = 0;
+  const breakRe = /<break time="(\d+(?:\.\d+)?)s"\s*\/>/g;
+  let m;
+  while ((m = breakRe.exec(script)) !== null) breakSeconds += parseFloat(m[1]);
+  const spokenChars = script.replace(/<break[^>]+\/>/g, "").replace(/\s+/g, " ").trim().length;
+  return breakSeconds + spokenChars / SPOKEN_CHARS_PER_SECOND;
 }
 
 type ListenerContext = {
@@ -273,21 +283,37 @@ Rules:
   return textBlock.text.trim();
 }
 
-function buildWriterPrompt(targetSeconds: number, listenerBlock: string, timeOfDay: string): string {
-  const { target: targetChars, min: minChars, max: maxChars } = getTargetCharBudget(targetSeconds);
-  // Inflate the target we show Opus by 25% — it consistently undershoots by ~20%.
-  // The hard minimum stays at minChars so we don't overshoot into unusable territory.
-  const inflatedTarget = Math.round(targetChars * 1.25);
+function buildWriterPrompt(targetSeconds: number, listenerBlock: string, timeOfDay: string, experienceLevel: string | null): string {
+  // More experienced = more silence; beginners need denser guidance
+  const spokenFraction = experienceLevel === "experienced" ? 0.45
+    : experienceLevel === "intermediate" ? 0.55
+    : 0.65; // beginner or unknown
+  const spokenSeconds = Math.round(targetSeconds * spokenFraction);
+  const breakSeconds = targetSeconds - spokenSeconds;
+  const spokenChars = Math.round(spokenSeconds * SPOKEN_CHARS_PER_SECOND);
+  const minEstimated = Math.round(targetSeconds * 0.92);
+  const maxEstimated = Math.round(targetSeconds * 1.10);
+
   return `${listenerBlock}You are writing a guided meditation script. Follow the plan below EXACTLY.
 
 TIME OF DAY: ${timeOfDay}
 
-DURATION REQUIREMENT — HARD STOP
-Write approximately ${inflatedTarget} characters of spoken script.
-Hard minimum: ${minChars} characters. Hard maximum: ${maxChars} characters.
-Do NOT close the meditation — no "gently return", no "open your eyes", no closing breath — until your script is at least ${minChars} characters.
-Keep the meditation open and spacious. If you reach a natural close before ${minChars} chars, continue with an additional silent breathing stretch, a body awareness section, or a gentle reflection before closing.
-You will almost certainly write less than you think. Err long.
+DURATION REQUIREMENT
+This session must produce approximately ${targetSeconds} seconds of audio. Audio duration = spoken time + break time.
+
+Your targets:
+- Spoken text: ~${spokenChars} characters (not counting break tag markup)
+- Break silence: ~${breakSeconds} total seconds across all <break> tags
+- These combine to approximately ${targetSeconds}s of audio
+
+DURATION SELF-CHECK — do this before writing your closing:
+1. Sum all <break time="Xs" /> values in your script → your breakSeconds
+2. Count characters excluding break tags → your spokenChars
+3. estimatedDuration = breakSeconds + spokenChars ÷ 18
+4. If estimatedDuration < ${minEstimated}s, do NOT close yet — add more breath stretches, body awareness, or silent reflection
+5. Target range: ${minEstimated}–${maxEstimated}s
+
+Do NOT close the meditation until your self-check passes.
 
 FORMATTING FOR SPOKEN DURATION
 - One to two sentences per paragraph. Short lines. Blank lines between paragraphs.
@@ -385,7 +411,7 @@ export async function generateScript(
   const response = await anthropic.messages.create({
     model: WRITER_MODEL,
     max_tokens: 20000,
-    system: buildWriterPrompt(targetSeconds, listenerBlock, timeOfDay),
+    system: buildWriterPrompt(targetSeconds, listenerBlock, timeOfDay, listenerContext.experienceLevel),
     messages: [
       {
         role: "user",
@@ -413,8 +439,10 @@ export async function generateScript(
     cacheRead: response.usage.cache_read_input_tokens ?? 0,
   });
 
-  // Single expansion pass as safety net only
-  if (script.length < minChars) {
+  // Expand only if estimated audio duration is genuinely short (>10% under target)
+  const estimatedSeconds = estimateScriptDuration(script);
+  log("write", "duration estimate", { estimatedSeconds: Math.round(estimatedSeconds), targetSeconds, scriptChars: script.length });
+  if (estimatedSeconds < targetSeconds * 0.90) {
     script = await expandScript(script, targetChars, minChars);
   }
 

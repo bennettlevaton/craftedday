@@ -1,26 +1,22 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { and, eq, isNotNull } from "drizzle-orm";
-import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
-import { dailySessions, meditations, userProfiles } from "@/db/schema";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { R2_BUCKET, R2_PUBLIC_URL, r2 } from "@/lib/r2";
-import { generateAudio, generateScript } from "@/lib/meditation";
-import type { VoiceGender } from "@/lib/elevenlabs";
+import { dailySessions, userProfiles } from "@/db/schema";
+import { enqueueJob, triggerWorker } from "@/lib/jobs";
+import { getOrCreateProfile } from "@/lib/user";
 import { log, logError } from "@/lib/log";
+import type { VoiceGender } from "@/lib/elevenlabs";
 
 export const runtime = "nodejs";
-export const maxDuration = 800;
+export const maxDuration = 60;
 
-const DEFAULT_DURATION = 600; // 10 min
+const DEFAULT_DURATION = 600;
 
 function todayEst(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
 
-function dailyPrompt(
-  profile: { primaryGoals: string[] | null; experienceLevel: string | null },
-): string {
+function dailyPrompt(profile: { primaryGoals: string[] | null; experienceLevel: string | null }): string {
   const goals = profile.primaryGoals?.filter((g) => g !== "other") ?? [];
   const focus = goals.length > 0 ? goals.join(" and ") : "general wellbeing";
   const level = profile.experienceLevel ?? "intermediate";
@@ -28,7 +24,6 @@ function dailyPrompt(
 }
 
 export async function GET(req: NextRequest) {
-  // Verify Vercel cron secret
   const secret = req.headers.get("authorization");
   if (secret !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -37,7 +32,6 @@ export async function GET(req: NextRequest) {
   const date = todayEst();
   log("cron:daily", "start", { date });
 
-  // All onboarded users from user_profiles
   const allUsers = await db
     .select({
       userId: userProfiles.userId,
@@ -50,52 +44,49 @@ export async function GET(req: NextRequest) {
 
   log("cron:daily", "users to process", { count: allUsers.length });
 
-  const counts = { generated: 0, skipped: 0, errors: 0 };
+  const counts = { enqueued: 0, skipped: 0, errors: 0 };
 
-  async function generateForUser(profile: typeof allUsers[0]) {
-    const { userId } = profile;
-    try {
-      const existing = await db
-        .select({ id: dailySessions.meditationId })
-        .from(dailySessions)
-        .where(and(eq(dailySessions.userId, userId), eq(dailySessions.date, date)))
-        .limit(1);
-      if (existing.length > 0) { counts.skipped++; return; }
+  await Promise.all(
+    allUsers.map(async (user) => {
+      try {
+        const existing = await db
+          .select({ id: dailySessions.meditationId })
+          .from(dailySessions)
+          .where(and(eq(dailySessions.userId, user.userId), eq(dailySessions.date, date)))
+          .limit(1);
+        if (existing.length > 0) { counts.skipped++; return; }
 
-      const voiceGender: VoiceGender = profile.voiceGender === "male" ? "male" : "female";
-      const prompt = dailyPrompt(profile);
+        const profile = await getOrCreateProfile(user.userId);
+        const voiceGender: VoiceGender = user.voiceGender === "male" ? "male" : "female";
+        const prompt = dailyPrompt(user);
 
-      const targetSeconds = DEFAULT_DURATION;
+        await enqueueJob({
+          userId: user.userId,
+          prompt,
+          durationSeconds: DEFAULT_DURATION,
+          voiceGender,
+          profile: {
+            name: profile.name,
+            experienceLevel: profile.experienceLevel,
+            primaryGoals: profile.primaryGoals ?? [],
+            primaryGoalCustom: profile.primaryGoalCustom,
+            preferenceSummary: profile.preferenceSummary,
+          },
+          source: "cron",
+        });
 
-      const meditationId = randomUUID();
-      const { script, title } = await generateScript(prompt, targetSeconds, {
-        name: null,
-        experienceLevel: profile.experienceLevel,
-        primaryGoals: (profile.primaryGoals as string[]) ?? [],
-        primaryGoalCustom: null,
-        preferenceSummary: null,
-      });
-      const audio = await generateAudio(script, voiceGender, targetSeconds);
+        counts.enqueued++;
+      } catch (err) {
+        counts.errors++;
+        logError(`cron:daily:${user.userId}`, err);
+      }
+    }),
+  );
 
-      const key = `${userId}/${meditationId}.mp3`;
-      await r2.send(new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, Body: audio, ContentType: "audio/mpeg" }));
-      const audioUrl = `${R2_PUBLIC_URL}/${key}`;
+  log("cron:daily", "enqueued", counts);
 
-      await db.insert(meditations).values({ id: meditationId, userId, prompt, title, script, audioUrl, duration: targetSeconds });
-      await db.insert(dailySessions).values({ userId, date, meditationId }).onConflictDoNothing();
+  // Kick off the worker chain
+  after(() => triggerWorker());
 
-      counts.generated++;
-      log("cron:daily", "generated", { userId, meditationId });
-    } catch (err) {
-      counts.errors++;
-      logError(`cron:daily:${userId}`, err);
-    }
-  }
-
-  for (const user of allUsers) {
-    await generateForUser(user);
-  }
-
-  log("cron:daily", "done", counts);
   return NextResponse.json(counts);
 }

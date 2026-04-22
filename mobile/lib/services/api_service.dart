@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/meditation.dart';
@@ -14,13 +15,17 @@ class GeneratedMeditation {
     required this.duration,
   });
 
-  factory GeneratedMeditation.fromJson(Map<String, dynamic> json) {
+  factory GeneratedMeditation.fromDoneJob(Map<String, dynamic> json) {
     return GeneratedMeditation(
       id: json['id'] as String,
       audioUrl: json['audioUrl'] as String,
       duration: json['duration'] as int,
     );
   }
+}
+
+class MeditationFailedException implements Exception {
+  const MeditationFailedException();
 }
 
 class QuotaExceededException implements Exception {
@@ -92,7 +97,7 @@ class ApiService {
     ),
   )..interceptors.add(_AuthInterceptor());
 
-  Future<GeneratedMeditation> generateMeditation({
+  Future<String> enqueueMeditation({
     required String prompt,
     required int durationSeconds,
   }) async {
@@ -101,7 +106,7 @@ class ApiService {
         '/api/meditation/generate',
         data: {'prompt': prompt, 'duration': durationSeconds},
       );
-      return GeneratedMeditation.fromJson(res.data as Map<String, dynamic>);
+      return (res.data as Map<String, dynamic>)['jobId'] as String;
     } on DioException catch (e) {
       if (e.response?.statusCode == 429) {
         final body = e.response?.data as Map<String, dynamic>? ?? {};
@@ -120,6 +125,19 @@ class ApiService {
       }
       rethrow;
     }
+  }
+
+  Future<GeneratedMeditation> pollJobUntilDone(String jobId) async {
+    const maxAttempts = 150; // ~10 min at 4s intervals
+    for (var i = 0; i < maxAttempts; i++) {
+      await Future.delayed(const Duration(seconds: 4));
+      final res = await _dio.get('/api/meditation/jobs/$jobId');
+      final data = res.data as Map<String, dynamic>;
+      final status = data['status'] as String;
+      if (status == 'done') return GeneratedMeditation.fromDoneJob(data);
+      if (status == 'failed') throw const MeditationFailedException();
+    }
+    throw TimeoutException('Meditation generation timed out', const Duration(minutes: 10));
   }
 
   Future<void> submitCheckin({

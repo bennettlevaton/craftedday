@@ -98,12 +98,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() => _loading = true);
     _controller.clear();
-    MusicService.instance.start(); // start music immediately, don't await
+    MusicService.instance.start();
     try {
-      final result = await apiService.generateMeditation(
+      final jobId = await apiService.enqueueMeditation(
         prompt: prompt,
         durationSeconds: _durationSeconds,
       );
+      final result = await apiService.pollJobUntilDone(jobId);
       if (!mounted) return;
       context.push(
         '/player?audioUrl=${Uri.encodeComponent(result.audioUrl)}'
@@ -118,6 +119,12 @@ class _HomeScreenState extends State<HomeScreen> {
       MusicService.instance.stop();
       if (!mounted) return;
       context.push('/paywall');
+    } on MeditationFailedException catch (_) {
+      MusicService.instance.stop();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Something went wrong generating your session. Please try again.')),
+      );
     } catch (e) {
       MusicService.instance.stop();
       if (!mounted) return;

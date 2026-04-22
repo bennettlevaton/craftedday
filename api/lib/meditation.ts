@@ -438,11 +438,10 @@ export async function generateScript(
 const TRAILING_SILENCE =
   ' <break time="3s" /> <break time="3s" /> <break time="3s" /> <break time="3s" />';
 
-// eleven_v3 hard limit is ~5 min per request. Split long scripts into 3 chunks
+// eleven_v3 hard limit is ~5 min per request. Split long scripts into chunks
 // at natural section-transition boundaries (lines ending with multiple break tags
 // followed by a blank line) so the MP3 join lands in silence.
-function splitScriptIntoChunks(script: string): string[] {
-  // Collect all paragraph-break positions (\n\n)
+function splitScriptIntoChunks(script: string, numChunks = 5): string[] {
   const breakPositions: number[] = [];
   let i = 0;
   while (i < script.length) {
@@ -452,17 +451,13 @@ function splitScriptIntoChunks(script: string): string[] {
     i = idx + 2;
   }
 
-  if (breakPositions.length < 2) return [script];
+  if (breakPositions.length < numChunks - 1) return [script];
 
-  // Prefer split points where the preceding line ends with 2+ stacked break tags
-  // (section transitions). Score = multi-break bonus minus distance penalty.
   const MULTI_BREAK_RE = /(<break time="\d+s" \/>[\s]*){2,}$/;
-  const MIN_CHUNK = 300; // reject splits that produce chunks smaller than this
+  const MIN_CHUNK = 300;
 
-  function findBestSplit(targetPos: number, exclude?: number): number {
-    // Tight window (±12%) keeps chunks near even thirds.
-    // Fall back to ±25% only if nothing found in tight window.
-    const eligible = (p: number) => !exclude || Math.abs(p - exclude) > MIN_CHUNK;
+  function findBestSplit(targetPos: number, existingSplits: number[]): number {
+    const eligible = (p: number) => existingSplits.every((s) => Math.abs(p - s) > MIN_CHUNK);
     const inWindow = (p: number, w: number) => Math.abs(p - targetPos) <= w;
 
     const tight = breakPositions.filter((p) => eligible(p) && inWindow(p, script.length * 0.12));
@@ -471,8 +466,6 @@ function splitScriptIntoChunks(script: string): string[] {
       : breakPositions.filter((p) => eligible(p) && inWindow(p, script.length * 0.25));
     if (pool.length === 0) return targetPos;
 
-    // Score: prefer multi-break boundaries, but distance dominates within the window.
-    // Multi-break bonus is 0.3 — not enough to pull a split far from the target.
     return pool
       .map((p) => {
         const preceding = script.slice(Math.max(0, p - 120), p).trimEnd();
@@ -483,16 +476,17 @@ function splitScriptIntoChunks(script: string): string[] {
       .sort((a, b) => b.score - a.score)[0].p;
   }
 
-  const split1 = findBestSplit(Math.floor(script.length / 3));
-  const split2 = findBestSplit(Math.floor((script.length * 2) / 3), split1);
+  const splits: number[] = [];
+  for (let k = 1; k < numChunks; k++) {
+    splits.push(findBestSplit(Math.floor((script.length * k) / numChunks), splits));
+  }
 
-  const chunks = [
-    script.slice(0, split1).trim(),
-    script.slice(split1, split2).trim(),
-    script.slice(split2).trim(),
-  ].filter((c) => c.replace(/<break[^>]+\/>/g, "").trim().length >= MIN_CHUNK);
+  const boundaries = [0, ...splits, script.length];
+  const chunks = boundaries
+    .slice(0, -1)
+    .map((start, k) => script.slice(start, boundaries[k + 1]).trim())
+    .filter((c) => c.replace(/<break[^>]+\/>/g, "").trim().length >= MIN_CHUNK);
 
-  // If splitting produced fewer than 2 usable chunks, return whole script
   if (chunks.length < 2) return [script];
   return chunks;
 }
@@ -543,8 +537,8 @@ export async function generateAudio(
   const voiceId = VOICES[voiceGender];
   const voiceSettings = {
     stability: 0.7,
-    similarity_boost: 0.8,
-    style: 0.35,
+    similarity_boost: 0.9,
+    style: 0.05,
     use_speaker_boost: true,
     speed: 0.9,
   };

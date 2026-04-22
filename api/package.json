@@ -28,7 +28,6 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
-    "@types/ffmpeg-installer__ffmpeg": "^1.1.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

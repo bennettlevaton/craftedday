@@ -25,7 +25,8 @@ function estimateScriptDuration(script: string): number {
   let breakSeconds = 0;
   const breakRe = /<break time="(\d+(?:\.\d+)?)s"\s*\/>/g;
   let m;
-  while ((m = breakRe.exec(script)) !== null) breakSeconds += parseFloat(m[1]);
+  // ElevenLabs caps each individual break tag at ~3s regardless of value.
+  while ((m = breakRe.exec(script)) !== null) breakSeconds += Math.min(parseFloat(m[1]), 3);
   const spokenChars = script.replace(/<break[^>]+\/>/g, "").replace(/\s+/g, " ").trim().length;
   return breakSeconds + spokenChars / SPOKEN_CHARS_PER_SECOND;
 }
@@ -93,14 +94,14 @@ function buildListenerContextBlock(ctx: ListenerContext): string {
   return lines.join("\n") + "\n\n";
 }
 
-function buildSystemPrompt(targetSeconds: number, listenerBlock: string, timeOfDay: string): string {
+function buildSystemPrompt(targetSeconds: number, listenerBlock: string, timeOfDay: string | null): string {
   const minutes = Math.round(targetSeconds / 60);
   const label = targetSeconds < 60 ? `${targetSeconds} seconds` : `${minutes} minute`;
   const { target: targetChars, min: minChars, max: maxChars } = getTargetCharBudget(targetSeconds);
 
   return `${listenerBlock}You are writing a guided meditation script for audio narration. Write in a warm, intimate, personal tone — as if you are meditating alongside the listener, not instructing them from above.
 
-TIME OF DAY: ${timeOfDay}. Let this naturally inform the tone and content — a morning session has different energy than an evening one. Don't announce the time, just let it shape the session.
+${timeOfDay ? `TIME OF DAY: ${timeOfDay}. Let this naturally inform the tone and content — a morning session has different energy than an evening one. Don't announce the time, just let it shape the session.` : "TIME OF DAY: unknown — the listener may be doing this any time of day. Keep the tone universally grounded, not tied to morning energy or evening wind-down."}
 
 WORK IN TWO STEPS
 Before writing a single line of the script, plan silently:
@@ -221,7 +222,7 @@ async function generatePlan(
   userPrompt: string,
   targetSeconds: number,
   listenerBlock: string,
-  timeOfDay: string,
+  timeOfDay: string | null,
 ): Promise<string> {
   const started = Date.now();
   const minutes = Math.round(targetSeconds / 60);
@@ -230,7 +231,7 @@ async function generatePlan(
   const plannerPrompt = `${listenerBlock}You are planning a guided meditation session. Output ONLY valid JSON — no markdown, no explanation.
 
 Listener input: "${userPrompt}"
-Time of day: ${timeOfDay}
+Time of day: ${timeOfDay ?? "any time (listener-scheduled, not time-specific)"}
 Target duration: ${minutes} minutes (${targetSeconds} seconds)
 Target script length: ~${targetChars} characters
 
@@ -283,7 +284,7 @@ Rules:
   return textBlock.text.trim();
 }
 
-function buildWriterPrompt(targetSeconds: number, listenerBlock: string, timeOfDay: string, experienceLevel: string | null): string {
+function buildWriterPrompt(targetSeconds: number, listenerBlock: string, timeOfDay: string | null, experienceLevel: string | null): string {
   // More experienced = more silence; beginners need denser guidance
   const spokenFraction = experienceLevel === "experienced" ? 0.45
     : experienceLevel === "intermediate" ? 0.55
@@ -296,7 +297,7 @@ function buildWriterPrompt(targetSeconds: number, listenerBlock: string, timeOfD
 
   return `${listenerBlock}You are writing a guided meditation script. Follow the plan below EXACTLY.
 
-TIME OF DAY: ${timeOfDay}
+${timeOfDay ? `TIME OF DAY: ${timeOfDay}` : "TIME OF DAY: unknown — the listener may use this session any time. Keep tone universally grounded."}
 
 DURATION REQUIREMENT
 This session must produce approximately ${targetSeconds} seconds of audio. Audio duration = spoken time + break time.
@@ -307,11 +308,12 @@ Your targets:
 - These combine to approximately ${targetSeconds}s of audio
 
 DURATION SELF-CHECK — do this before writing your closing:
-1. Sum all <break time="Xs" /> values in your script → your breakSeconds
-2. Count characters excluding break tags → your spokenChars
-3. estimatedDuration = breakSeconds + spokenChars ÷ 18
-4. If estimatedDuration < ${minEstimated}s, do NOT close yet — add more breath stretches, body awareness, or silent reflection
-5. Target range: ${minEstimated}–${maxEstimated}s
+1. Count your break tags — each tag contributes MAX 3s regardless of value (ElevenLabs hard cap). <break time="10s" /> = 3s, not 10s. To get 12s of silence you MUST stack four tags: <break time="3s" /> <break time="3s" /> <break time="3s" /> <break time="3s" />
+2. Sum (number of break tags × 3s) → your breakSeconds
+3. Count characters excluding break tags → your spokenChars
+4. estimatedDuration = breakSeconds + spokenChars ÷ 18
+5. If estimatedDuration < ${minEstimated}s, do NOT close yet — add more stacked break tags and spoken reflection
+6. Target range: ${minEstimated}–${maxEstimated}s
 
 Do NOT close the meditation until your self-check passes.
 
@@ -388,17 +390,21 @@ export async function generateScript(
   userPrompt: string,
   targetSeconds: number,
   listenerContext: ListenerContext,
+  options: { timeOfDay?: string | null } = {},
 ): Promise<{ script: string; title: string }> {
   const started = Date.now();
   const listenerBlock = buildListenerContextBlock(listenerContext);
   const { target: targetChars, min: minChars, max: maxChars } = getTargetCharBudget(targetSeconds);
 
-  const hour = new Date().getHours();
-  const timeOfDay =
-    hour < 5 ? "late night" :
-    hour < 12 ? "morning" :
-    hour < 17 ? "afternoon" :
-    hour < 21 ? "evening" : "night";
+  const timeOfDay = "timeOfDay" in options
+    ? options.timeOfDay ?? null
+    : (() => {
+        const hour = new Date().getHours();
+        return hour < 5 ? "late night"
+          : hour < 12 ? "morning"
+          : hour < 17 ? "afternoon"
+          : hour < 21 ? "evening" : "night";
+      })();
 
   log("plan", "generating", { targetSeconds, targetChars, minChars, maxChars, timeOfDay, promptLen: userPrompt.length });
 
@@ -442,7 +448,7 @@ export async function generateScript(
   // Expand only if estimated audio duration is genuinely short (>10% under target)
   const estimatedSeconds = estimateScriptDuration(script);
   log("write", "duration estimate", { estimatedSeconds: Math.round(estimatedSeconds), targetSeconds, scriptChars: script.length });
-  if (estimatedSeconds < targetSeconds * 0.90) {
+  if (estimatedSeconds < targetSeconds * 0.95) {
     script = await expandScript(script, targetChars, minChars);
   }
 

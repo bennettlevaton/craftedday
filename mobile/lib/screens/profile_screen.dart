@@ -1,6 +1,7 @@
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../models/meditation.dart';
 import '../services/api_service.dart';
 import '../theme/colors.dart';
@@ -15,6 +16,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   UserStats? _stats;
   UserMe? _me;
+  UsageInfo? _usage;
   bool _loading = true;
 
   @override
@@ -28,11 +30,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final results = await Future.wait([
         apiService.getStats(),
         apiService.getMe(),
+        apiService.getUsage(),
       ]);
       if (!mounted) return;
       setState(() {
         _stats = results[0] as UserStats;
         _me = results[1] as UserMe;
+        _usage = results[2] as UsageInfo?;
         _loading = false;
       });
     } catch (_) {
@@ -178,6 +182,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 value: stats?.favoriteTime ?? '—',
               ),
             ],
+            if (!_loading && _usage != null && _usage!.subscribed) ...[
+              const SizedBox(height: 40),
+              _SectionLabel(text: 'Plan'),
+              const SizedBox(height: 16),
+              _UsageCard(usage: _usage!),
+            ],
             const SizedBox(height: 40),
             _SectionLabel(text: 'Settings'),
             const SizedBox(height: 4),
@@ -268,6 +278,84 @@ class _ProfileScreenState extends State<ProfileScreen> {
       };
     }).toList();
     return labels.join(', ');
+  }
+}
+
+class _UsageCard extends StatelessWidget {
+  final UsageInfo usage;
+  const _UsageCard({required this.usage});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final resetText = usage.periodEnd != null
+        ? 'Resets ${DateFormat('MMMM d').format(usage.periodEnd!)}'
+        : 'Active';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${usage.minutesUsed} / ${usage.minutesLimit} min',
+                style: textTheme.headlineMedium?.copyWith(fontSize: 16),
+              ),
+              Row(
+                children: [
+                  if (usage.isTrial)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Trial',
+                        style: textTheme.bodySmall?.copyWith(
+                          color: AppColors.accent,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  Text(
+                    resetText,
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: usage.usageFraction,
+              minHeight: 6,
+              backgroundColor: AppColors.divider,
+              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accent),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${usage.minutesRemaining} min remaining this month',
+            style: textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -23,6 +23,60 @@ class GeneratedMeditation {
   }
 }
 
+class QuotaExceededException implements Exception {
+  final int minutesUsed;
+  final int minutesLimit;
+  final bool isTrial;
+  final DateTime? periodEnd;
+  const QuotaExceededException({
+    required this.minutesUsed,
+    required this.minutesLimit,
+    this.isTrial = false,
+    this.periodEnd,
+  });
+}
+
+class NotSubscribedException implements Exception {
+  const NotSubscribedException();
+}
+
+class UsageInfo {
+  final bool subscribed;
+  final bool isTrial;
+  final String status;
+  final int minutesUsed;
+  final int minutesLimit;
+  final DateTime? periodStart;
+  final DateTime? periodEnd;
+
+  const UsageInfo({
+    required this.subscribed,
+    required this.isTrial,
+    required this.status,
+    required this.minutesUsed,
+    required this.minutesLimit,
+    this.periodStart,
+    this.periodEnd,
+  });
+
+  factory UsageInfo.fromJson(Map<String, dynamic> json) => UsageInfo(
+        subscribed: (json['subscribed'] as bool?) ?? false,
+        isTrial: (json['isTrial'] as bool?) ?? false,
+        status: (json['status'] as String?) ?? 'inactive',
+        minutesUsed: (json['minutesUsed'] as int?) ?? 0,
+        minutesLimit: (json['minutesLimit'] as int?) ?? 500,
+        periodStart: json['periodStart'] != null
+            ? DateTime.parse(json['periodStart'] as String)
+            : null,
+        periodEnd: json['periodEnd'] != null
+            ? DateTime.parse(json['periodEnd'] as String)
+            : null,
+      );
+
+  int get minutesRemaining => (minutesLimit - minutesUsed).clamp(0, minutesLimit);
+  double get usageFraction => (minutesUsed / minutesLimit).clamp(0.0, 1.0);
+}
+
 class ApiService {
   static String get _baseUrl {
     const defined = String.fromEnvironment('API_BASE_URL');
@@ -42,11 +96,30 @@ class ApiService {
     required String prompt,
     required int durationSeconds,
   }) async {
-    final res = await _dio.post(
-      '/api/meditation/generate',
-      data: {'prompt': prompt, 'duration': durationSeconds},
-    );
-    return GeneratedMeditation.fromJson(res.data as Map<String, dynamic>);
+    try {
+      final res = await _dio.post(
+        '/api/meditation/generate',
+        data: {'prompt': prompt, 'duration': durationSeconds},
+      );
+      return GeneratedMeditation.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 429) {
+        final body = e.response?.data as Map<String, dynamic>? ?? {};
+        final error = body['error'] as String?;
+        if (error == 'quota_exceeded') {
+          throw QuotaExceededException(
+            minutesUsed: (body['minutesUsed'] as int?) ?? 0,
+            minutesLimit: (body['minutesLimit'] as int?) ?? 150,
+            isTrial: (body['isTrial'] as bool?) ?? false,
+            periodEnd: body['periodEnd'] != null
+                ? DateTime.tryParse(body['periodEnd'] as String)
+                : null,
+          );
+        }
+        throw const NotSubscribedException();
+      }
+      rethrow;
+    }
   }
 
   Future<void> submitCheckin({
@@ -124,6 +197,15 @@ class ApiService {
         if (voiceGender != null) 'voiceGender': voiceGender,
       },
     );
+  }
+
+  Future<UsageInfo?> getUsage() async {
+    try {
+      final res = await _dio.get('/api/usage');
+      return UsageInfo.fromJson(res.data as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> submitOnboarding({

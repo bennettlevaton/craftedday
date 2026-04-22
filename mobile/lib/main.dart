@@ -6,11 +6,20 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'router.dart';
 import 'services/clerk_service.dart';
+import 'services/subscription_service.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
+
+  const rcKey = String.fromEnvironment('REVENUECAT_API_KEY');
+  final revenueCatKey = rcKey.isNotEmpty
+      ? rcKey
+      : dotenv.env['REVENUECAT_API_KEY'] ?? '';
+  if (revenueCatKey.isNotEmpty) {
+    await SubscriptionService.instance.configure(revenueCatKey);
+  }
 
   // Configure audio session for background playback (screen lock, etc.)
   final session = await AudioSession.instance;

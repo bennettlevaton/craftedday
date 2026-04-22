@@ -50,18 +50,18 @@ AI-powered personalized meditation app. User describes their current mood/situat
 ### 6. Vercel Production
 - [ ] Set `CRON_SECRET` to a strong random string (not `craftedday-cron-2026`)
 - [x] Wire `craftedday.com` custom domain
-- [ ] Confirm all env vars set (Clerk live keys, etc.)
+- [x] Confirm all env vars set (Clerk live keys, etc.)
 - [ ] Verify cron runs at 5am UTC (`/api/cron/generate-daily`)
 
 ### 7. Legal (required for App Store)
-- [ ] **Privacy Policy** — host at `craftedday.com/privacy`. Must cover: data collected, Clerk auth, AI processing, ElevenLabs TTS. Tools: Termly, iubenda, or custom.
-- [ ] **Terms of Service** — required for subscriptions, host at `craftedday.com/terms`
+- [x] **Privacy Policy** — host at `craftedday.com/privacy`. Must cover: data collected, Clerk auth, AI processing, ElevenLabs TTS. Tools: Termly, iubenda, or custom.
+- [x] **Terms of Service** — required for subscriptions, host at `craftedday.com/terms`
 
 ### 8. Landing Page (`craftedday.com`)
-- [ ] Basic page explaining the app
+- [x] Basic page explaining the app
 - [ ] App Store link (once live)
-- [ ] Privacy policy + terms in footer
-- [ ] Support email address
+- [x] Privacy policy + terms in footer
+- [x] Support email address
 
 ### 9. App Store Connect Listing
 - [ ] App name, subtitle, description, keywords

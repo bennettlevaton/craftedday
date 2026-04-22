@@ -3,17 +3,18 @@ import { randomUUID } from "crypto";
 import { db } from "./db";
 import { subscriptions, usagePeriods } from "@/db/schema";
 
-export const CUSTOM_MINUTES_LIMIT = 500;
+export const CUSTOM_MINUTES_LIMIT = 150;
+export const TRIAL_MINUTES_LIMIT  = 60;
 
-type QuotaOk    = { ok: true;  minutesUsed: number; periodEnd: Date | null };
-type QuotaBlock = { ok: false; reason: "not_subscribed" | "quota_exceeded"; minutesUsed: number; periodEnd: Date | null };
+type QuotaOk    = { ok: true;  minutesUsed: number; minutesLimit: number; isTrial: boolean; periodEnd: Date | null };
+type QuotaBlock = { ok: false; reason: "not_subscribed" | "quota_exceeded"; minutesUsed: number; minutesLimit: number; isTrial: boolean; periodEnd: Date | null };
 
 export async function checkSubscriptionAndQuota(
   clerkId: string,
   requestedMinutes: number,
 ): Promise<QuotaOk | QuotaBlock> {
   if (process.env.SKIP_SUBSCRIPTION_CHECK === "true") {
-    return { ok: true, minutesUsed: 0, periodEnd: null };
+    return { ok: true, minutesUsed: 0, minutesLimit: CUSTOM_MINUTES_LIMIT, isTrial: false, periodEnd: null };
   }
 
   const [sub] = await db
@@ -29,8 +30,11 @@ export async function checkSubscriptionAndQuota(
     (!sub.periodEnd || sub.periodEnd > now);
 
   if (!isActive) {
-    return { ok: false, reason: "not_subscribed", minutesUsed: 0, periodEnd: sub?.periodEnd ?? null };
+    return { ok: false, reason: "not_subscribed", minutesUsed: 0, minutesLimit: CUSTOM_MINUTES_LIMIT, isTrial: false, periodEnd: sub?.periodEnd ?? null };
   }
+
+  const limit = sub.periodType === "TRIAL" ? TRIAL_MINUTES_LIMIT : CUSTOM_MINUTES_LIMIT;
+  const isTrial = sub.periodType === "TRIAL";
 
   const [period] = await db
     .select({ customMinutesUsed: usagePeriods.customMinutesUsed })
@@ -40,11 +44,11 @@ export async function checkSubscriptionAndQuota(
 
   const minutesUsed = period?.customMinutesUsed ?? 0;
 
-  if (minutesUsed + requestedMinutes > CUSTOM_MINUTES_LIMIT) {
-    return { ok: false, reason: "quota_exceeded", minutesUsed, periodEnd: sub.periodEnd };
+  if (minutesUsed + requestedMinutes > limit) {
+    return { ok: false, reason: "quota_exceeded", minutesUsed, minutesLimit: limit, isTrial, periodEnd: sub.periodEnd };
   }
 
-  return { ok: true, minutesUsed, periodEnd: sub.periodEnd };
+  return { ok: true, minutesUsed, minutesLimit: limit, isTrial, periodEnd: sub.periodEnd };
 }
 
 // Called only after successful R2 upload + DB save.
@@ -75,6 +79,7 @@ export async function upsertSubscription(data: {
   clerkId: string;
   rcCustomerId: string;
   status: string;
+  periodType: string;
   productId: string;
   periodStart: Date;
   periodEnd: Date;
@@ -90,6 +95,7 @@ export async function upsertSubscription(data: {
       .update(subscriptions)
       .set({
         status: data.status,
+        periodType: data.periodType,
         productId: data.productId,
         periodStart: data.periodStart,
         periodEnd: data.periodEnd,
@@ -101,6 +107,7 @@ export async function upsertSubscription(data: {
       clerkId: data.clerkId,
       rcCustomerId: data.rcCustomerId,
       status: data.status,
+      periodType: data.periodType,
       productId: data.productId,
       periodStart: data.periodStart,
       periodEnd: data.periodEnd,

@@ -8,6 +8,7 @@ import 'screens/post_session_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/meditation_detail_screen.dart';
+import 'screens/paywall_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/',
@@ -48,5 +49,11 @@ final appRouter = GoRouter(
     ),
     GoRoute(path: '/history', builder: (_, _) => const HistoryScreen()),
     GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen()),
+    GoRoute(
+      path: '/paywall',
+      builder: (_, state) => PaywallScreen(
+        gated: state.uri.queryParameters['gated'] == '1',
+      ),
+    ),
   ],
 );

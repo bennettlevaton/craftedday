@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       subscribed,
       status: sub.status,
+      isTrial: sub.periodType === "TRIAL",
       minutesUsed: period?.customMinutesUsed ?? 0,
       minutesLimit: CUSTOM_MINUTES_LIMIT,
       periodStart: sub.periodStart,

@@ -12,6 +12,7 @@ type RCEvent = {
   app_user_id: string;
   original_app_user_id?: string;
   product_id: string;
+  period_type: string; // TRIAL | NORMAL | INTRO
   purchased_at_ms: number;
   expiration_at_ms: number | null;
 };
@@ -30,10 +31,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // We set the Clerk user ID as the RC app_user_id at SDK init time.
-  const clerkId = event.original_app_user_id ?? event.app_user_id;
+  // app_user_id is the current ID (Clerk ID after login).
+  // original_app_user_id is the first ID ever assigned (anonymous before login).
+  const clerkId = event.app_user_id;
   const periodStart = new Date(event.purchased_at_ms);
   const periodEnd = event.expiration_at_ms ? new Date(event.expiration_at_ms) : null;
+  const periodType = event.period_type ?? "NORMAL";
 
   log("webhook:rc", event.type, { clerkId, productId: event.product_id });
 
@@ -44,6 +47,7 @@ export async function POST(req: NextRequest) {
           clerkId,
           rcCustomerId: event.app_user_id,
           status: "active",
+          periodType,
           productId: event.product_id,
           periodStart,
           periodEnd: periodEnd!,
@@ -52,12 +56,13 @@ export async function POST(req: NextRequest) {
         break;
 
       case "RENEWAL":
-        // Close the current period, open a fresh one.
+        // Close trial/old period, open fresh paid period.
         await closeCurrentPeriod(clerkId, periodStart);
         await upsertSubscription({
           clerkId,
           rcCustomerId: event.app_user_id,
           status: "active",
+          periodType,
           productId: event.product_id,
           periodStart,
           periodEnd: periodEnd!,

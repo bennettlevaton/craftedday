@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../services/music_service.dart';
 import '../services/notification_service.dart';
 import '../theme/colors.dart';
+import 'package:intl/intl.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,7 +20,6 @@ const _durationOptions = [
   (600, '10 min'),
   (900, '15 min'),
   (1200, '20 min'),
-  (1800, '30 min'),
 ];
 
 class _HomeScreenState extends State<HomeScreen> {
@@ -112,6 +112,14 @@ class _HomeScreenState extends State<HomeScreen> {
         '&id=${result.id}'
         '&duration=${result.duration}',
       );
+    } on QuotaExceededException catch (e) {
+      MusicService.instance.stop();
+      if (!mounted) return;
+      _showQuotaSheet(e);
+    } on NotSubscribedException catch (_) {
+      MusicService.instance.stop();
+      if (!mounted) return;
+      context.push('/paywall');
     } catch (e) {
       MusicService.instance.stop();
       if (!mounted) return;
@@ -121,6 +129,70 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _showQuotaSheet(QuotaExceededException e) {
+    final String title;
+    final String body;
+
+    if (e.isTrial) {
+      title = "You've reached your trial limit.";
+      body = e.periodEnd != null
+          ? 'Your full 150 minutes unlock on ${DateFormat('MMMM d').format(e.periodEnd!)} when your subscription begins.'
+          : 'Your full 150 minutes unlock when your trial converts.';
+    } else {
+      title = "You've used all your minutes this month.";
+      body = e.periodEnd != null
+          ? 'Your next 150 minutes unlock on ${DateFormat('MMMM d').format(e.periodEnd!)}.'
+          : 'Your minutes reset at the start of your next billing cycle.';
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.divider,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                body,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 28),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Got it'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override

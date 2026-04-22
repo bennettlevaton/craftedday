@@ -27,7 +27,7 @@ function dailyPrompt(
   return `A grounding meditation for a ${level} practitioner focused on ${focus}`;
 }
 
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
   // Verify Vercel cron secret
   const secret = req.headers.get("authorization");
   if (secret !== `Bearer ${process.env.CRON_SECRET}`) {

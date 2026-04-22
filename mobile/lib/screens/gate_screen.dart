@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../services/api_service.dart';
 import '../services/clerk_service.dart';
+import '../services/subscription_service.dart';
 import '../theme/colors.dart';
 
 class GateScreen extends StatefulWidget {
@@ -48,6 +49,16 @@ class _GateScreenState extends State<GateScreen> {
 
     if (authState.user == null) {
       if (mounted) context.go('/sign-in');
+      _deciding = false;
+      return;
+    }
+
+    // Login to RevenueCat — must await so isPremium is accurate before routing.
+    await SubscriptionService.instance.login(authState.user!.id);
+
+    // Non-subscribers go straight to the gated paywall.
+    if (!SubscriptionService.instance.isPremium) {
+      if (mounted) context.go('/paywall?gated=1');
       _deciding = false;
       return;
     }

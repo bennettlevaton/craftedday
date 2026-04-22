@@ -9,7 +9,7 @@ import type { VoiceGender } from "@/lib/elevenlabs";
 import { log, logError } from "@/lib/log";
 import { getOrCreateProfile } from "@/lib/user";
 import { getUserId, isAuthError } from "@/lib/auth";
-import { checkSubscriptionAndQuota, deductCustomMinutes, CUSTOM_MINUTES_LIMIT } from "@/lib/subscription";
+import { checkSubscriptionAndQuota, deductCustomMinutes } from "@/lib/subscription";
 
 export const runtime = "nodejs";
 export const maxDuration = 800;
@@ -20,7 +20,7 @@ type Body = {
 };
 
 const MIN_DURATION = 30;
-const MAX_DURATION = 1800; // 30 min hard cap
+const MAX_DURATION = 1200; // 20 min hard cap
 const DEFAULT_DURATION = 600; // 10 min
 
 export async function POST(req: NextRequest) {
@@ -60,7 +60,8 @@ export async function POST(req: NextRequest) {
           ? {
               error: "quota_exceeded",
               minutesUsed: quota.minutesUsed,
-              minutesLimit: CUSTOM_MINUTES_LIMIT,
+              minutesLimit: quota.minutesLimit,
+              isTrial: quota.isTrial,
               periodEnd: quota.periodEnd,
             }
           : { error: "not_subscribed" };

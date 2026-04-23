@@ -7,20 +7,66 @@ import { log } from "./log";
 import { db } from "./db";
 import { meditations, userProfiles } from "@/db/schema";
 
-const PLANNER_MODEL = "claude-haiku-4-5";   // fast planner with bounded thinking
-const WRITER_MODEL = "claude-opus-4-7";     // best writer, no thinking overhead
+const PLANNER_MODEL = "claude-haiku-4-5";
+const WRITER_MODEL  = "claude-opus-4-7";
 const SUMMARY_MODEL = "claude-sonnet-4-6";
 
-// Total script chars per second of audio (including break tag markup) — calibrated empirically.
-const CHARS_PER_SECOND = 14;
+// Two separate rates — named explicitly so they are never confused.
+// PROMPT: chars we ask Opus to write per second of spoken time (generation target).
+// AUDIO:  observed spoken chars per second of actual narration (for duration estimation).
+const SPOKEN_CHARS_PER_SEC_PROMPT = 28;
+const SPOKEN_CHARS_PER_SEC_AUDIO  = 15;
 
-function getTargetCharBudget(targetSeconds: number) {
-  const target = Math.round(targetSeconds * CHARS_PER_SECOND);
-  return { target, min: target - 100, max: target + 400 };
+// Spoken fraction per section role — derived in code so Haiku never does ratio math.
+const ROLE_SPOKEN_FRACTION: Record<string, number> = {
+  open:            0.85,
+  settle:          0.72,
+  anchor:          0.72,
+  active_guidance: 0.74,
+  release:         0.66,
+  transformation:  0.58,
+  quiet_breathing: 0.28,
+  return:          0.68,
+  close:           0.72,
+};
+
+const ROLE_MIN_SPOKEN_SECONDS: Record<string, number> = {
+  open: 24,
+  settle: 28,
+  anchor: 28,
+  active_guidance: 30,
+  release: 26,
+  transformation: 24,
+  quiet_breathing: 20,
+  return: 22,
+  close: 20,
+};
+
+function sectionSpokenSeconds(
+  role: string,
+  durationSeconds: number,
+  experienceLevel: string | null,
+): number {
+  const normalizedRole = role === "silent" ? "quiet_breathing" : role;
+  const base = ROLE_SPOKEN_FRACTION[normalizedRole] ?? 0.65;
+  const modifier = experienceLevel === "experienced" ? -0.05
+    : experienceLevel === "beginner" ? +0.05
+    : 0;
+  const minSpoken = Math.min(
+    durationSeconds - 6,
+    ROLE_MIN_SPOKEN_SECONDS[normalizedRole] ?? 20,
+  );
+  const computed = Math.round(durationSeconds * Math.min(0.92, Math.max(0.20, base + modifier)));
+  return Math.max(minSpoken, computed);
 }
 
 function estimateScriptDuration(script: string): number {
-  return script.length / CHARS_PER_SECOND;
+  let breakSeconds = 0;
+  const re = /<break time="(\d+(?:\.\d+)?)s"\s*\/>/g;
+  let m;
+  while ((m = re.exec(script)) !== null) breakSeconds += parseFloat(m[1]);
+  const spokenChars = script.replace(/<break[^>]+\/>/g, "").replace(/\s+/g, " ").trim().length;
+  return breakSeconds + spokenChars / SPOKEN_CHARS_PER_SEC_AUDIO;
 }
 
 type ListenerContext = {
@@ -86,128 +132,133 @@ function buildListenerContextBlock(ctx: ListenerContext): string {
   return lines.join("\n") + "\n\n";
 }
 
-function buildSystemPrompt(targetSeconds: number, listenerBlock: string, timeOfDay: string | null): string {
-  const minutes = Math.round(targetSeconds / 60);
-  const label = targetSeconds < 60 ? `${targetSeconds} seconds` : `${minutes} minute`;
-  const { target: targetChars, min: minChars, max: maxChars } = getTargetCharBudget(targetSeconds);
+type PlanSection = {
+  section: string;
+  role: string; // open | settle | anchor | active_guidance | release | transformation | quiet_breathing | return | close
+  duration_seconds: number;
+  guidance_density: "high" | "medium" | "low" | "silent";
+  notes: string;
+  // derived in code, not from Haiku:
+  spoken_seconds: number;
+  silence_seconds: number;
+};
 
-  return `${listenerBlock}You are writing a guided meditation script for audio narration. Write in a warm, intimate, personal tone — as if you are meditating alongside the listener, not instructing them from above.
+type ParsedPlan = {
+  title: string;
+  technique: string;
+  anchor: string;
+  imagery: string;
+  opening_context: string;
+  experienceLevel: string | null;
+  arc: PlanSection[];
+};
 
-${timeOfDay ? `TIME OF DAY: ${timeOfDay}. Let this naturally inform the tone and content — a morning session has different energy than an evening one. Don't announce the time, just let it shape the session.` : "TIME OF DAY: unknown — the listener may be doing this any time of day. Keep the tone universally grounded, not tied to morning energy or evening wind-down."}
+function buildSectionSystem(listenerBlock: string): string {
+  return `${listenerBlock}You are rendering one section of an ongoing guided meditation. The listener is already inside the session — do not re-introduce it.
 
-WORK IN TWO STEPS
-Before writing a single line of the script, plan silently:
-1. What is the listener actually asking for? What do they need to release or cultivate?
-2. Which meditation technique(s) fit — box breathing, body scan, progressive relaxation, metta, noting, visualization, somatic grounding, open awareness? Pick 1-2. Don't announce them.
-3. What's the arc — settle, anchor, work (addressing their input), return, close?
-4. Where will the longer silent stretches go, and how long?
-5. Will this plan hit the character target? Check your draft length before finishing.
-
-Then draft the script.
-
-DURATION REQUIREMENT — NON-NEGOTIABLE
-This script must produce approximately ${targetSeconds} seconds of spoken audio.
-Target: ${targetChars} characters. Acceptable range: ${minChars}–${maxChars} characters.
-Do not end the script until you are inside this range. If your draft is under ${minChars} characters, keep writing — add more breath pacing, sensory cues, and grounded reflection until you reach the target.
-Never run more than 30 seconds over. Users pay for a specific length.
-
-FORMATTING FOR SPOKEN DURATION
-- One to two sentences per paragraph. Short lines. Blank lines between paragraphs.
-- Do not write dense prose — this must sound natural read aloud at a calm, unhurried pace.
-- Favor spacious pacing over literary compression.
-- Occasional ellipses (...) for natural pause within a line.
-- No headers, titles, or bullet points inside the script.
-
-THE MOST IMPORTANT RULE
-The listener told you something specific. The meditation must actively work through it. Name their situation (without quoting them back verbatim), invite release of whatever's heavy in it, make space, and help them build a new way of meeting it. A generic calm-down script is a failure. If they said "I'm anxious about a presentation," the meditation releases that anxiety and quietly rehearses their steady, grounded self walking into the room. If they said "I can't sleep," the meditation slows the nervous system and lets the day's noise drain out of them. Their input is the spine of the session, not a footnote.
-
-CRITICAL — DO NOT RESPOND TO THE INPUT CONVERSATIONALLY. The listener's input is context, not a message to reply to. Never open with "That's okay," "I hear you," "That makes sense," or any chatbot-style acknowledgment. Do not repeat or reference their words back at them. Begin immediately in meditation mode — a settling breath, a grounding cue, movement into the body. The context shapes everything underneath without ever being named directly.
-
-NOTICE BEFORE RELEASE
-You cannot release what you haven't felt. Before drawing anything out — tension, anxiety, heaviness — ask them to notice it first. Where does it sit in the body? What's its texture, its weight, its color? Is it tight, diffuse, hot, still, loud? Let them spend time with it. Then, once it has a shape, you can invite release. Applies to the whole meditation: feel the brain before draining it, feel the shoulders before softening them, feel the breath before deepening it.
-
-DRAW ON REAL MEDITATION TECHNIQUES
-Opus, you know meditation traditions deeply. Use them — fit the technique to what the listener shared:
-- Box breathing / 4-7-8 / coherent breathing for anxiety, focus, sleep
-- Body scan (head-to-toe or toe-to-head) for full-body settling
-- Progressive muscle relaxation for tension, stress
-- Metta / loving-kindness directed at self or others when appropriate
-- Noting practice (labelling thoughts: "thinking," "feeling," "planning") for busy minds
-- Visualization (draining, filling with light, rooting into earth, cloud imagery) for release work
-- Breath counting or mantra repetition for focus
-- Open awareness / just-sitting for experienced practitioners
-- Somatic grounding (naming 5 things you feel) for acute anxiety
-Blend techniques naturally — don't announce the technique name, just use it.
-
-SESSION ARC — this applies to everyone, every session
-People arrive frenzied. The beginning must meet them there. Do not open with long silences — open with active, close guidance: short sentences, frequent voice, directed breath work. As the session progresses and the listener settles, gradually pull back guidance and let silence grow. By the final third, the voice should be sparse and the listener should be breathing independently for stretches.
-
-The arc in every session:
-1. OPENING (first 20-30% of session): HIGH guidance density. Short gaps. The listener's mind is still racing. Give them something to DO — a specific breath technique, a clear intention to breathe in and release. Direct them: "breathe in the energy you want today, breathe out what's been weighing on you." Name what they walked in with. Keep the voice close and frequent. Don't leave them alone yet.
-2. MIDDLE (next 40-50%): MODERATE guidance. Sentences spaced further apart. Body work, imagery, release. Begin introducing 1-2 independent breathing stretches. The anchor keeps them tethered.
-3. CLOSE (final 20-30%): SPARSE guidance. Long independent breathing periods. Short prompts to return. Let them sit. The voice is a gentle thread, not a handrail.
-
-PACING BY EXPERIENCE LEVEL (adjust the arc, not remove it)
-- Beginner: tighter arc. Stay in heavy guidance longer (first 30-40%). Shorter independent stretches — 10-15 seconds max before a return cue. Focus on breath control, noticing the mind, gently redirecting thoughts. They need more scaffolding and mind management cues ("if a thought comes, just notice it and come back to your breath"). Independent periods still happen — just shorter and more anchored.
-- Intermediate: standard arc above.
-- Experienced: faster transition to independence. Can enter sparse guidance by halfway through. Longer silent stretches (30-60s+). Fewer anchor reminders.
-
-SILENCE MECHANICS
-Use <break time="Xs" /> tags. Single tags cap around 3 seconds. Stack consecutive tags for longer silences. Vary durations naturally.
-
-Every sentence ends with at least one break tag. Longer breaks after breath cues and body instructions. Independent breathing stretches use stacked consecutive tags.
-
-Do not over-guide. The most common failure is talking too much in the back half.
-
-TONE AND VOICE
-- Warm, unhurried, human. Soft but grounded.
-- Inclusive language: "we're going to", "let's", "we". You are with them.
+TONE
+- Warm, intimate, human — as if sitting cross-legged next to the listener.
 - Second person ("you") for direct guidance, "we" for shared moments.
-- Short sentences. Conversational. Natural breath cadence.
-- Gentle personal observations are welcome ("notice how the air cools your nostrils on the inhale, warms on the exhale").
-- Visual imagery is welcome and encouraged: clouds supporting the body, dark specks released with the exhale, valves at the base of the skull draining tension, white light filling the chest. Don't force poetry — but don't shy from it.
-- Keep vocabulary accessible. Avoid clinical or jargon-heavy spiritual language.
+- Short sentences. Conversational. Never clinical, never listy.
 
 BREATH
-- Breathing is continuous and assumed — the listener never stops breathing between your sentences. Do NOT narrate every inhale and exhale as if they would forget to breathe without you.
-- Establish the breath pattern at the start: one or two clear instructions ("breathe in slowly through your nose, let it out") then move on. After that, reference the breath sparingly — as an anchor to return to, not as a sequence to narrate.
-- Wrong: "breathe in... now breathe out... take another breath in... and exhale..." (robotic, over-instructed)
-- Right: establish the breath, anchor to it, then let it be the quiet background of everything else you say
-- Default to nostril breathing throughout.
-- Use breath intentionally: at the opening, pair the exhale with releasing what the listener walked in with, and the inhale with drawing in what they want. This is a one-time technique at the top, not a recurring command.
-- NEVER COUNT BREATHS. Do not say "breathe in, two, three, four" or "one... two... three". The <break> tag provides the timing — the listener finds their own rhythm. Just say "breathe in" and let the break tag hold the space, then say "and breathe out". The count belongs to them, not you.
+- Reference breath as a recurring anchor.
+- Never count breaths.
+- A break after "breathe in" means the listener is actively inhaling. The next words must resolve that breath.
 
-OUTPUT REQUIREMENT
-- The very first thing in the script must be a spoken sentence — never start with a <break> tag or silence. The first word must be heard immediately.
+SILENCE
+- Every sentence ends with at least one <break time="Xs" /> tag.
+- Use only 3s, 6s, or 9s break tags.
+- Do not stack consecutive break tags.
+- Use fewer 9s tags than 3s and 6s tags.
 
-STRUCTURE (adapt to the listener's input; don't rigidly follow)
-1. Opening — a natural greeting or anchoring phrase. Meet them where they are.
-2. Settle — breath cues, relaxing the body top-down (forehead, jaw, shoulders, hips, feet).
-3. Anchor — name the anchor they'll return to throughout.
-4. Release — address what they walked in with. Name it, feel it, drain it. Use imagery (dark threads released on the exhale, tension draining out the base of the skull, heaviness dissolving). Make space.
-5. ENVISION THE OPPOSITE — this is non-negotiable and must be present in every session. After releasing what's heavy, call in its opposite. If they came in anxious, build the version of them who is calm and clear. If stressed, the version who moves with ease. If depleted, the version who is full of life. Ask them to feel that version in the body — not just think it, but inhabit it. What does their chest feel like? Their shoulders? Their breath? Have them rehearse a specific moment from their week as that version of themselves. Walk them through it. This is how the session turns from release into transformation.
-6. Return — soften back to the breath and body, carrying that version with them.
-7. Close — brief, grounded. An intention they carry out. "Open your eyes" only if it fits.
+DURATION DISCIPLINE
+- Hit the spoken target. Do not come in materially short.
+- Under target by a little is acceptable. Under target by a lot is a failure.
+- Do not compress the section into a tiny amount of prose.
+- The listener should feel continuously accompanied, even in quieter sections.
 
-SILENCE — this is the most important part of the script
-- Silence is how the listener actually drops in. Treat it like a first-class instrument.
-- Use <break time="Xs" /> tags. Single tags cap at 3s — stack consecutive tags for longer pauses.
-- Vary intentionally based on what the sentence is doing:
-  - 1-2s between phrases inside the same continuous thought (single tag)
-  - 3s between full sentences to let the image land (single tag)
-  - 6-9s after a breath cue or body instruction (2-3 stacked 3s tags)
-  - 12-15s at transitions between sections (4-5 stacked 3s tags)
-  - See "CALM BREATHING PERIODS" for longer settling silences
-- EVERY sentence ends with at least one break tag. No exceptions.
-- Longer pauses after inhale/exhale cues, after body-scanning prompts, or when asking the listener to notice something specific.
-- Do NOT use the same duration everywhere — natural speech pauses vary.
+ANTI-PADDING
+- Do not ramble.
+- Do not repeat the same instruction twice.
+- Do not restate the listener's situation.
+- Do not add generic therapy language.
+- Do not fill space with decorative metaphors.
 
-OUTPUT
-- Output ONLY the script with break tags. No title, no headers, no explanation.
-- Do not mention that you are an AI, a meditation app, or that this is personalized.
-- Do not reference clock time ("for the next ten minutes"). Just guide.
+QUIET SECTIONS
+- Quiet does NOT mean nearly wordless.
+- In quiet_breathing sections, keep the language sparse but present: brief check-ins, anchor reminders, body cues, and return lines spread across the section.
+- Never collapse a long quiet section into just one opening line and one closing line.
 
-Write as if you are a real person sitting cross-legged next to the listener, speaking from your own practice.`;
+OUTPUT: script text with break tags only. No headers, no labels, no explanation.`;
+}
+
+function densityInstructions(density: string, experienceLevel: string | null): string {
+  const exp = experienceLevel === "experienced" ? "experienced"
+    : experienceLevel === "intermediate" ? "intermediate"
+    : "beginner";
+
+  const table: Record<string, Record<string, string>> = {
+    high: {
+      beginner:     "8–10 short sentences. Use mostly 3s pauses, occasional 6s pauses. Stay close and active.",
+      intermediate: "7–9 short sentences. Use 3s pauses, occasional 6s pauses. Keep the voice present.",
+      experienced:  "6–8 short sentences. Use 3s pauses, occasional 6s pauses. Efficient but still present.",
+    },
+    medium: {
+      beginner:     "6–8 short sentences. Use 3s and 6s pauses. Keep clear anchor reminders throughout.",
+      intermediate: "5–7 short sentences. Use mostly 6s pauses with some 3s pauses. Let the section breathe without disappearing.",
+      experienced:  "4–6 short sentences. Use mostly 6s pauses with occasional 3s or 9s pauses. Minimal but present.",
+    },
+    low: {
+      beginner:     "4–5 short sentences. Use mostly 6s pauses and at most one 9s pause. Keep gentle check-ins present.",
+      intermediate: "4 short sentences. Use mostly 6s pauses and at most one or two 9s pauses. Sparse but still active.",
+      experienced:  "3–4 short sentences. Use 6s pauses and at most two 9s pauses. Quiet, but not empty.",
+    },
+    silent: {
+      beginner:     "Treat this like a very quiet section, not a mute section: 4 short sentences minimum, with 6s and 9s pauses.",
+      intermediate: "Treat this like a very quiet section, not a mute section: 3–4 short sentences, with 6s and 9s pauses.",
+      experienced:  "Treat this like a very quiet section, not a mute section: 3 short sentences minimum, with 6s and 9s pauses.",
+    },
+  };
+
+  return (table[density] ?? table.medium)[exp];
+}
+
+function buildSectionUserPrompt(
+  section: PlanSection,
+  plan: ParsedPlan,
+  userPrompt: string,
+  timeOfDay: string | null,
+  isFirst: boolean,
+  prevSectionNotes: string | null,
+): string {
+  const targetSpokenChars = Math.round(section.spoken_seconds * SPOKEN_CHARS_PER_SEC_PROMPT);
+  const minSpokenChars = Math.round(targetSpokenChars * 0.9);
+  const maxSpokenChars = Math.round(targetSpokenChars * 1.15);
+  const densityGuide = densityInstructions(section.guidance_density, plan.experienceLevel ?? null);
+
+  return `SESSION
+Technique: ${plan.technique}
+Anchor: ${plan.anchor}
+Imagery: ${plan.imagery}
+Listener input: "${userPrompt}"
+${timeOfDay ? `Time of day: ${timeOfDay}` : ""}
+${prevSectionNotes ? `\nContinuity: previous section covered "${prevSectionNotes}". Continue naturally — do not re-introduce.` : ""}
+
+SECTION: ${section.section} (role: ${section.role})
+${section.notes}
+
+DENSITY: ${densityGuide}
+
+SPOKEN TARGET: ${targetSpokenChars} characters.
+Minimum acceptable: ${minSpokenChars} characters.
+Hard maximum: ${maxSpokenChars} characters.
+Do not come in under the minimum unless doing so would force obvious repetition.
+The section should feel complete, spacious, and substantial.
+
+${isFirst ? "This is the opening — start with a spoken sentence immediately, no leading break tags." : "Assume the listener is already settled. Continue naturally from the prior section. Do not restart the meditation."}
+
+Script with break tags only.`;
 }
 
 async function generatePlan(
@@ -218,39 +269,37 @@ async function generatePlan(
 ): Promise<string> {
   const started = Date.now();
   const minutes = Math.round(targetSeconds / 60);
-  const { target: targetChars } = getTargetCharBudget(targetSeconds);
-
   const plannerPrompt = `${listenerBlock}You are planning a guided meditation session. Output ONLY valid JSON — no markdown, no explanation.
 
 Listener input: "${userPrompt}"
-Time of day: ${timeOfDay ?? "any time (listener-scheduled, not time-specific)"}
+Time of day: ${timeOfDay ?? "any time"}
 Target duration: ${minutes} minutes (${targetSeconds} seconds)
-Target script length: ~${targetChars} characters
 
 Output this exact JSON:
 {
-  "title": "3-5 word evocative session title (e.g. 'Finding Ease', 'Night Release', 'Grounded Start')",
-  "opening_context": "how to meet the listener — their state, energy, what they need immediately",
+  "title": "3-5 word evocative title",
   "technique": "1-2 specific techniques (e.g. box breathing, body scan, noting, visualization)",
   "anchor": "specific anchor point (e.g. belly button, chest rise, feet on floor)",
-  "breathing_pattern": "specific breath instruction for this session",
-  "imagery": "specific release and transformation imagery to use",
+  "imagery": "specific release and transformation imagery",
   "arc": [
     {
-      "section": "section name",
+      "section": "short section name",
+      "role": "open | settle | release | transformation | quiet_breathing | return | close",
       "duration_seconds": 0,
       "guidance_density": "high | medium | low | silent",
-      "notes": "what specifically happens — be concrete"
+      "notes": "what specifically happens — be concrete, 1 sentence"
     }
   ]
 }
 
 Rules:
-- arc duration_seconds must sum to EXACTLY ${targetSeconds}
-- Must include: settle (body scan), release, envision_opposite (the transformed version of themselves), return, close
-- Silent sections are mandatory — at least 2 of them, 60-120s each. These are where the listener breathes alone.
-- Total silent section time must be at least ${Math.round(targetSeconds * 0.20)}s (20% of session)
-- Opening density is always HIGH — meet them where they are`;
+- Sum of all duration_seconds must equal EXACTLY ${targetSeconds}. Use simple round integers.
+- 4–5 sections total. Prefer fewer, larger sections over many small ones.
+- Must include roles: open, at least one quiet_breathing section, close.
+- Do NOT use the role "silent". Use "quiet_breathing" for the quiet section.
+- open → high density. quiet_breathing → low or silent density. close → medium density.
+- The quiet_breathing section should usually be 25-40% of the total session, not more.
+- Prefer functional section names, not poetic ones.`;
 
   const res = await anthropic.messages.create({
     model: PLANNER_MODEL,
@@ -276,68 +325,39 @@ Rules:
   return textBlock.text.trim();
 }
 
-const SPOKEN_CHARS_PER_SECOND = 18; // spoken text only, calibrated at speed 0.9
-const SECS_PER_BREAK_TAG = 3;       // ElevenLabs caps single break tags at ~3s
-
-function buildWriterPrompt(targetSeconds: number, listenerBlock: string, timeOfDay: string | null, experienceLevel: string | null): string {
-  const spokenFraction = experienceLevel === "experienced" ? 0.45
-    : experienceLevel === "intermediate" ? 0.55
-    : 0.65; // beginner or unknown
-
-  const spokenSeconds = Math.round(targetSeconds * spokenFraction);
-  const silenceSeconds = targetSeconds - spokenSeconds;
-  const spokenChars = Math.round(spokenSeconds * SPOKEN_CHARS_PER_SECOND);
-  const breakTagCount = Math.round(silenceSeconds / SECS_PER_BREAK_TAG);
-
-  const silenceGuidance = experienceLevel === "experienced"
-    ? "transition to independent silences (30–60s) early, sparse voice in the final third"
-    : experienceLevel === "intermediate"
-    ? "standard arc, independent silences of 15–30s in the middle and close"
-    : "stay close, independent silences of max 10–15s before a return cue";
-
-  return `${listenerBlock}You are writing a guided meditation script. Follow the plan below EXACTLY.
-
-${timeOfDay ? `TIME OF DAY: ${timeOfDay}` : "TIME OF DAY: unknown — the listener may use this session any time. Keep tone universally grounded."}
-
-DURATION TARGETS — aim for all three:
-- Spoken text: ~${spokenChars} characters (everything that gets narrated aloud, not counting break tags)
-- Silence: ~${silenceSeconds}s total (~${breakTagCount} break tags × 3s each)
-- Combined: approximately ${targetSeconds}s of audio
-
-SILENCE BUDGET: ${silenceSeconds}s total for this session. Do not exceed it.
-Distribute naturally — short gaps between sentences (3-6s), medium pauses after body instructions (9-15s), longer independent breathing stretches in the middle and close (20-45s). Your total break time across the entire script must stay within ${silenceSeconds}s.
-
-EXPERIENCE LEVEL: ${silenceGuidance}.
-
-FORMATTING FOR SPOKEN DURATION
-- One to two sentences per paragraph. Short lines. Blank lines between paragraphs.
-- Do not write dense prose — this must sound natural read aloud at a calm, unhurried pace.
-- Favor spacious pacing over literary compression.
-- Occasional ellipses (...) for natural pause within a line.
-- No headers, titles, or bullet points inside the script.
-
-VOICE
-- Warm, intimate, human. Second person ("you") for guidance, "we" for shared moments.
-- Short sentences. Conversational. Never robotic or listy.
-- Nostril breathing by default.
-- Do NOT open with conversational acknowledgment ("That's okay", "I hear you"). Begin in meditation mode.
-- Do NOT mention AI, apps, or personalization.
-
-SILENCE
-- Use <break time="Xs" /> tags. Single tags cap at ~3s — stack for longer.
-- Every sentence ends with at least one break tag.
-- Vary durations: 1-2s within a thought, 3s between sentences, 6-9s after body instructions, 12-15s at transitions.
-- BREATH CYCLES ARE ONE CONTINUOUS UNIT. A break after "breathe in" means the listener IS breathing in during that silence. The next words must tell them what to do next — immediately. Never stack multiple breaks between an inhale and its exhale instruction. The listener should never wonder "do I hold here?"
-  CORRECT: "Breathe in slowly. <break time="4s"/> And breathe out. <break time="6s"/>"
-  CORRECT: "Breathe in... <break time="3s"/> ...and let it out. <break time="5s"/>"
-  WRONG: "Breathe in. <break time="3s"/> <break time="3s"/> <break time="3s"/> Now breathe out." (9s gap = confusion)
-  WRONG: "Take a deep breath in. <break time="3s"/> <break time="3s"/> Exhale." (same problem)
-  After any inhale instruction, the very next words after the break must be the exhale cue.
-
-OUTPUT
-- Script text with break tags only. No title, headers, or explanation.`;
+async function writeSectionScript(
+  section: PlanSection,
+  plan: ParsedPlan,
+  userPrompt: string,
+  timeOfDay: string | null,
+  sectionSystem: string,
+  isFirst: boolean,
+  prevSectionNotes: string | null,
+): Promise<string> {
+  const started = Date.now();
+  const response = await anthropic.messages.create({
+    model: WRITER_MODEL,
+    max_tokens: 4000,
+    system: sectionSystem,
+    messages: [{
+      role: "user",
+      content: buildSectionUserPrompt(section, plan, userPrompt, timeOfDay, isFirst, prevSectionNotes),
+    }],
+  });
+  const textBlock = response.content.find((b) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") {
+    throw new Error(`No text from Opus for section "${section.section}"`);
+  }
+  const text = textBlock.text.trim();
+  log("write", `section:${section.section}`, {
+    ms: Date.now() - started,
+    chars: text.length,
+    spokenSeconds: section.spoken_seconds,
+    silenceSeconds: section.silence_seconds,
+    outputTokens: response.usage.output_tokens,
+  });
+  return text;
 }
-
 
 export async function generateScript(
   userPrompt: string,
@@ -347,7 +367,6 @@ export async function generateScript(
 ): Promise<{ script: string; title: string }> {
   const started = Date.now();
   const listenerBlock = buildListenerContextBlock(listenerContext);
-  const { target: targetChars, min: minChars, max: maxChars } = getTargetCharBudget(targetSeconds);
 
   const timeOfDay = "timeOfDay" in options
     ? options.timeOfDay ?? null
@@ -359,71 +378,95 @@ export async function generateScript(
           : hour < 21 ? "evening" : "night";
       })();
 
-  log("plan", "generating", { targetSeconds, targetChars, minChars, maxChars, timeOfDay, promptLen: userPrompt.length });
+  log("plan", "generating", { targetSeconds, timeOfDay, promptLen: userPrompt.length });
 
-  // Phase 1: Haiku generates a structured plan
-  const plan = await generatePlan(userPrompt, targetSeconds, listenerBlock, timeOfDay);
+  // Phase 1: Haiku generates a plan with per-section spoken/silence targets
+  const planText = await generatePlan(userPrompt, targetSeconds, listenerBlock, timeOfDay);
 
-  log("write", "generating script from plan");
+  let plan: ParsedPlan;
+  try {
+    const stripped = planText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+    const raw = JSON.parse(stripped);
+    // Derive spoken/silence split in code — Haiku only outputs role + duration_seconds
+    raw.arc = (raw.arc ?? []).map((s: PlanSection) => {
+      const normalizedRole = s.role === "silent" ? "quiet_breathing" : s.role;
+      const spokenSecs = sectionSpokenSeconds(normalizedRole, s.duration_seconds, listenerContext.experienceLevel);
+      return {
+        ...s,
+        role: normalizedRole,
+        spoken_seconds: spokenSecs,
+        silence_seconds: Math.max(6, s.duration_seconds - spokenSecs),
+      };
+    });
+    raw.experienceLevel = listenerContext.experienceLevel;
+    plan = raw as ParsedPlan;
+  } catch {
+    throw new Error("Failed to parse plan JSON from Haiku");
+  }
 
-  // Phase 2: Opus writes the script from the plan
-  const response = await anthropic.messages.create({
-    model: WRITER_MODEL,
-    max_tokens: 20000,
-    system: buildWriterPrompt(targetSeconds, listenerBlock, timeOfDay, listenerContext.experienceLevel),
-    messages: [
-      {
-        role: "user",
-        content: `Plan:\n${plan}\n\nListener input: "${userPrompt}"\n\nWrite the meditation script now.`,
-      },
-    ],
+  log("write", "generating sections sequentially", {
+    sections: plan.arc.length,
+    arc: plan.arc.map(s => ({ role: s.role, duration: s.duration_seconds, spoken: s.spoken_seconds, silence: s.silence_seconds })),
   });
 
-  const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("No text block in Opus response");
+  // Phase 2: Write sections sequentially so continuity cues are real
+  const sectionSystem = buildSectionSystem(listenerBlock);
+  const sectionTexts: string[] = [];
+  for (let i = 0; i < plan.arc.length; i++) {
+    const section = plan.arc[i];
+    const text = await writeSectionScript(
+      section,
+      plan,
+      userPrompt,
+      timeOfDay,
+      sectionSystem,
+      i === 0,
+      i > 0 ? plan.arc[i - 1].notes : null,
+    );
+    sectionTexts.push(text);
   }
-  let script = textBlock.text.trim();
+
+  const script = sectionTexts.join("\n\n");
+
+  // Enforce the per-plan silence budget — scale all break values proportionally.
+  // Now that normalizeBreakTags is removed, ElevenLabs honors individual values
+  // directly so scaling works correctly without stacking side-effects.
+  const plannedSilence = plan.arc.reduce((s, sec) => s + sec.silence_seconds, 0);
+  const processed = enforceBreakBudget(script, plannedSilence);
 
   log("write", "script ready", {
     ms: Date.now() - started,
-    scriptChars: script.length,
-    estimatedSeconds: Math.round(estimateScriptDuration(script)),
+    sections: plan.arc.length,
+    scriptChars: processed.length,
+    estimatedSeconds: Math.round(estimateScriptDuration(processed)),
     targetSeconds,
-    inputTokens: response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens,
-    cacheWrite: response.usage.cache_creation_input_tokens ?? 0,
-    cacheRead: response.usage.cache_read_input_tokens ?? 0,
+    rawBreakSeconds: Math.round(sumBreakSeconds(script)),
+    finalBreakSeconds: Math.round(sumBreakSeconds(processed)),
   });
 
-  // Extract title from plan JSON (strip markdown fences if Haiku wrapped it)
-  let title = "A moment for you";
-  try {
-    const stripped = plan.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-    const planJson = JSON.parse(stripped);
-    if (typeof planJson.title === "string" && planJson.title.length > 0) {
-      title = planJson.title;
-    }
-  } catch {
-    // Plan might not be valid JSON; use default title
-  }
-
-  return { script: normalizeBreakTags(script), title };
+  return { script: processed, title: plan.title ?? "A moment for you" };
 }
 
-// Convert any <break time="Xs" /> where X > 3 into stacked 3s tags so ElevenLabs
-// honours the full intended silence (single tags cap at ~3s).
-function normalizeBreakTags(script: string): string {
-  return script.replace(/<break time="(\d+(?:\.\d+)?)s"\s*\/>/g, (original, secs) => {
-    const total = parseFloat(secs);
-    if (total <= 3) return original;
-    const full = Math.floor(total / 3);
-    const remainder = Math.round((total % 3) * 10) / 10;
-    const tags = Array(full).fill('<break time="3s" />');
-    if (remainder > 0) tags.push(`<break time="${remainder}s" />`);
-    return tags.join(' ');
+function sumBreakSeconds(script: string): number {
+  let total = 0;
+  const re = /<break time="(\d+(?:\.\d+)?)s"\s*\/>/g;
+  let m;
+  while ((m = re.exec(script)) !== null) total += parseFloat(m[1]);
+  return total;
+}
+
+// If the model over-spends the silence budget, scale all break values down
+// proportionally so total silence fits within budget before normalizing.
+function enforceBreakBudget(script: string, budgetSeconds: number): string {
+  const total = sumBreakSeconds(script);
+  if (total <= budgetSeconds) return script;
+  const scale = budgetSeconds / total;
+  return script.replace(/<break time="(\d+(?:\.\d+)?)s"\s*\/>/g, (_, secs) => {
+    const scaled = Math.max(1, Math.round(parseFloat(secs) * scale * 10) / 10);
+    return `<break time="${scaled}s" />`;
   });
 }
+
 
 // 10-second trailing silence so sessions don't end abruptly.
 // Stacked 3s tags since ElevenLabs caps single tags at ~3s.
@@ -446,7 +489,7 @@ function splitScriptIntoChunks(script: string, numChunks = 5): string[] {
   if (breakPositions.length < numChunks - 1) return [script];
 
   const MULTI_BREAK_RE = /(<break time="\d+s" \/>[\s]*){2,}$/;
-  const MIN_CHUNK = 300;
+  const MIN_CHUNK = 100;
 
   function findBestSplit(targetPos: number, existingSplits: number[]): number {
     const eligible = (p: number) => existingSplits.every((s) => Math.abs(p - s) > MIN_CHUNK);
@@ -528,11 +571,11 @@ export async function generateAudio(
   const started = Date.now();
   const voiceId = VOICES[voiceGender];
   const voiceSettings = {
-    stability: 0.7,
+    stability: 0.8,
     similarity_boost: 0.9,
-    style: 0.05,
+    style: 0.0,
     use_speaker_boost: true,
-    speed: 0.9,
+    speed: 0.85,
   };
 
   const chunks = splitScriptIntoChunks(script);
@@ -564,7 +607,8 @@ export async function generateAudio(
     const estimatedDurationSeconds = Math.round(pcmData.length / PCM_BYTE_RATE);
     const durationErrorSeconds = estimatedDurationSeconds - targetSeconds;
     const durationErrorPct = Math.round((durationErrorSeconds / targetSeconds) * 100);
-    const observedCharsPerSecond = +(script.length / estimatedDurationSeconds).toFixed(2);
+    const spokenChars = script.replace(/<break[^>]+\/>/g, "").replace(/\s+/g, " ").trim().length;
+    const observedCharsPerSecond = +(spokenChars / estimatedDurationSeconds).toFixed(2);
 
     log("elevenlabs", "audio ready", {
       ms: Date.now() - started,

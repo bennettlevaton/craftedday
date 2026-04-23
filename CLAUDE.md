@@ -33,11 +33,11 @@ AI-powered personalized meditation app. User describes their current mood/situat
 
 ### 4. RevenueCat + In-App Purchase
 - [ ] Create subscription product in App Store Connect (e.g. $9.99/mo, $59.99/yr)
-- [ ] Set up RevenueCat account + project
+- [x] Set up RevenueCat account + project
 - [ ] Connect App Store Connect to RevenueCat
-- [ ] Integrate RevenueCat Flutter SDK
-- [ ] Gate daily session card behind paywall
-- [ ] Add paywall screen
+- [x] Integrate RevenueCat Flutter SDK
+- [x] Gate daily session card behind paywall
+- [x] Add paywall screen
 
 ### 5. Database
 - [x] Add missing columns in PlanetScale (admin credential):

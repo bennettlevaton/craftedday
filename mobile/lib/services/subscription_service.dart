@@ -25,6 +25,25 @@ class SubscriptionService {
       try { await Purchases.logIn(userId); } catch (_) {}
     }
     await refreshFromBackend();
+    // If backend hasn't seen a purchase for this user but StoreKit has a
+    // valid receipt (e.g. reinstall, new device, same Apple ID), silently
+    // restore. Fixes the "paid on another device, see paywall here" trap
+    // without requiring the user to tap "Restore purchases."
+    if (!_isPremium && _configured) {
+      try {
+        final info = await Purchases.restorePurchases();
+        if (info.entitlements.active.containsKey('CraftedDay Pro')) {
+          _setPremium(true);
+          // Give the RC webhook a moment to write the subscriptions row,
+          // then pull truth. Non-fatal if the webhook is slower than this.
+          await Future.delayed(const Duration(seconds: 2));
+          await refreshFromBackend();
+        }
+      } catch (_) {
+        // Restore can throw on network issues — backend already has the
+        // authoritative answer, so this is best-effort only.
+      }
+    }
   }
 
   Future<void> logout() async {

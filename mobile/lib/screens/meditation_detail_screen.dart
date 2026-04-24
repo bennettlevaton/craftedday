@@ -76,7 +76,7 @@ class _MeditationDetailScreenState extends State<MeditationDetailScreen> {
         _submitting = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Saved')),
+        const SnackBar(content: Text('Check-in saved')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -101,7 +101,7 @@ class _MeditationDetailScreenState extends State<MeditationDetailScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 2))
             : m == null
-                ? Center(child: Text('Session not found', style: textTheme.bodyLarge?.copyWith(color: AppColors.textSecondary)))
+                ? Center(child: Text('Session unavailable', style: textTheme.bodyLarge?.copyWith(color: AppColors.textSecondary)))
                 : SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(horizontal: 28),
                     child: Column(

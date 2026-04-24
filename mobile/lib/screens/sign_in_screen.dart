@@ -63,10 +63,10 @@ class SignInScreen extends StatelessWidget {
                           idToken: idToken,
                         );
                         if (context.mounted) context.go('/');
-                      } catch (e) {
+                      } catch (_) {
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Sign in failed: $e')),
+                          const SnackBar(content: Text("We couldn't sign you in. Please try again.")),
                         );
                       }
                     },

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 import '../services/subscription_service.dart';
 import '../theme/colors.dart';
@@ -96,6 +97,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   Future<void> _onSuccess() async {
+    // Backend is source of truth — make sure we've seen the webhook (or the
+    // optimistic flag) before routing on, so the next screen doesn't bounce
+    // the user back to the paywall.
+    await SubscriptionService.instance.refreshFromBackend();
     if (widget.gated) {
       try {
         final me = await apiService.getMe();
@@ -157,7 +162,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
               ...[
                 'A fresh 10-min session crafted for you every morning',
                 '150 min/month of custom sessions, any time',
-                'AI that learns and adapts to what works for you',
+                'Personalized to what works for you over time',
               ].map((line) => Padding(
                     padding: const EdgeInsets.only(bottom: 14),
                     child: Row(
@@ -219,9 +224,67 @@ class _PaywallScreenState extends State<PaywallScreen> {
                     style: textTheme.bodyMedium
                         ?.copyWith(color: AppColors.textSecondary)),
               ),
+
+              const SizedBox(height: 4),
+
+              // Auto-renewal disclosure (Apple requirement) + legal links.
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  'Your subscription renews automatically each month until '
+                  'cancelled in Settings → Apple ID → Subscriptions. Payment '
+                  'is charged to your Apple ID.',
+                  textAlign: TextAlign.center,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _LegalLink(
+                    label: 'Terms',
+                    url: 'https://craftedday.com/terms',
+                  ),
+                  Text('  •  ',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: AppColors.textSecondary,
+                      )),
+                  _LegalLink(
+                    label: 'Privacy',
+                    url: 'https://craftedday.com/privacy',
+                  ),
+                ],
+              ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _LegalLink extends StatelessWidget {
+  final String label;
+  final String url;
+  const _LegalLink({required this.label, required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => launchUrl(Uri.parse(url),
+          mode: LaunchMode.externalApplication),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+              decoration: TextDecoration.underline,
+            ),
       ),
     );
   }

@@ -121,7 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          "Still crafting — it'll appear in History when it's ready.",
+          "Still preparing — it'll appear in History when it's ready.",
         ),
       ),
     );
@@ -163,13 +163,13 @@ class _HomeScreenState extends State<HomeScreen> {
       MusicService.instance.stop();
       if (!mounted || _abandoned) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Something went wrong generating your session. Please try again.')),
+        const SnackBar(content: Text("We couldn't prepare your session this time. Please try again.")),
       );
-    } catch (e) {
+    } catch (_) {
       MusicService.instance.stop();
       if (!mounted || _abandoned) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Something went wrong. ${e.toString()}')),
+        const SnackBar(content: Text("Something didn't go as planned. Please try again.")),
       );
     } finally {
       _abandonTimer?.cancel();
@@ -178,6 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showQuotaSheet(QuotaExceededException e) {
+    if (!mounted) return;
     final String title;
     final String body;
 
@@ -609,7 +610,7 @@ class _LoadingOverlayState extends State<_LoadingOverlay>
   int _cueIndex = 0;
 
   static const _cues = [
-    'Crafting your session — begin settling in now.',
+    'Settling in — your session is on its way.',
     'Find a comfortable position.',
     'Let your eyes close softly.',
     'Breathe in slowly through your nose.',

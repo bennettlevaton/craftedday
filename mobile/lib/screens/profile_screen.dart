@@ -119,10 +119,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _persist(Future<void> Function() action) async {
     try {
       await action();
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Couldn\'t save. ${e.toString()}')),
+        const SnackBar(content: Text("We couldn't save that change. Please try again.")),
       );
     }
   }

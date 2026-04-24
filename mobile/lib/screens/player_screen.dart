@@ -36,6 +36,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   double _dragValue = 0;
   bool _loadFailed = false;
   bool _retrying = false;
+  bool _navigated = false;
 
   @override
   void initState() {
@@ -55,7 +56,10 @@ class _PlayerScreenState extends State<PlayerScreen>
         MusicService.instance.pause();
       }
 
-      if (state.processingState == ProcessingState.completed && mounted) {
+      if (state.processingState == ProcessingState.completed &&
+          mounted &&
+          !_navigated) {
+        _navigated = true;
         MusicService.instance.stop();
         if (widget.replay) {
           context.pop();
@@ -98,6 +102,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   // If the user bails before ~70% of the session, check in. Past that we
   // assume they got enough out of it and close silently.
   Future<void> _handleClose() async {
+    if (_navigated) return;
+    _navigated = true;
+
     final pos = _player.position.inSeconds;
     final total = widget.duration;
     final finishedEnough = total > 0 && pos / total >= 0.7;
@@ -442,10 +449,10 @@ class _EarlyExitSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            Text('Leaving early?', style: textTheme.headlineMedium),
+            Text('Taking a break?', style: textTheme.headlineMedium),
             const SizedBox(height: 8),
             Text(
-              'Let us know so we can make this better.',
+              "Help us understand what didn't work.",
               style: textTheme.bodyMedium?.copyWith(
                 color: AppColors.textSecondary,
               ),

@@ -33,7 +33,7 @@ export default function Home() {
           Your daily meditation,<br />made for you.
         </h1>
         <p className="text-muted text-lg leading-relaxed mb-10 max-w-md">
-          A new AI-generated session every morning — personalized to your experience, goals, and how you&apos;ve been feeling.
+          A fresh session every morning — shaped around your experience, goals, and how you&apos;ve been feeling.
         </p>
 
         {/* App Store CTA */}
@@ -57,7 +57,7 @@ export default function Home() {
         <div className="flex flex-col sm:flex-row gap-10 sm:gap-6">
           {[
             { n: '1', title: 'Tell us about you', body: 'Share your experience level, goals, and how you\'re feeling today.' },
-            { n: '2', title: 'We craft your session', body: 'A meditation is generated just for you — script, pacing, and voice included.' },
+            { n: '2', title: 'Your session is prepared', body: 'A meditation made just for you — script, pacing, and voice included.' },
             { n: '3', title: 'Listen and reflect', body: 'Your session is ready every morning. Check in after and we\'ll get better over time.' },
           ].map(({ n, title, body }) => (
             <div key={n} className="flex-1 flex flex-col gap-3">
@@ -77,10 +77,9 @@ export default function Home() {
         <h2 className="font-serif text-2xl text-primary mb-10 text-center">What you get</h2>
         <ul className="flex flex-col gap-4">
           {[
-            'A fresh session generated for you every morning',
-            'AI voice that adapts to your experience and pace',
+            'A fresh session every morning, shaped just for you',
+            'A voice that adapts to your experience and pace',
             'Mood check-ins that make each session better than the last',
-            'Full session history — revisit any meditation, any time',
             'Background music that stays in sync with your voice guide',
           ].map((item) => (
             <li key={item} className="flex items-start gap-3">
@@ -94,7 +93,7 @@ export default function Home() {
 
         {/* Subscription note */}
         <p className="mt-10 text-sm text-muted text-center leading-relaxed border border-divider rounded-2xl px-6 py-4 bg-surface">
-          CraftedDay is free to explore. Daily generated sessions and full personalization require a premium subscription.
+          Start with a 3-day free trial, then $19.99/month. Cancel any time from Settings.
         </p>
       </section>
 

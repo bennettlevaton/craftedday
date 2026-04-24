@@ -60,11 +60,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       );
       if (!mounted) return;
       context.go('/home');
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Couldn\'t save. ${e.toString()}')),
+        const SnackBar(content: Text("We couldn't save that. Please try again.")),
       );
     }
   }

@@ -66,7 +66,9 @@ export default function Privacy() {
             <li><strong className="font-medium">Anthropic</strong> — AI generation of meditation scripts (anthropic.com). Your prompt and profile context are sent to Anthropic&apos;s API to generate your session script.</li>
             <li><strong className="font-medium">ElevenLabs</strong> — text-to-speech voice synthesis (elevenlabs.io). The generated script is sent to ElevenLabs to produce audio.</li>
             <li><strong className="font-medium">Cloudflare R2</strong> — audio file storage (cloudflare.com). Generated audio files are stored in Cloudflare R2.</li>
-            <li><strong className="font-medium">Apple</strong> — in-app purchases and subscriptions, if applicable (apple.com/legal/privacy)</li>
+            <li><strong className="font-medium">RevenueCat</strong> — subscription management (revenuecat.com). Your app user ID, subscription status, and purchase events are processed by RevenueCat to manage billing on our behalf.</li>
+            <li><strong className="font-medium">Apple</strong> — in-app purchases and subscriptions (apple.com/legal/privacy)</li>
+            <li><strong className="font-medium">Vercel Web Analytics</strong> — aggregated, privacy-friendly usage analytics (vercel.com/legal/privacy-policy). We record anonymized page-view and device-type metrics. No cross-site tracking and no advertising identifiers.</li>
           </ul>
           <p>We share only the data each provider needs to perform their specific function. We do not share your information with any other third parties.</p>
         </Section>

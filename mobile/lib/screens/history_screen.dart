@@ -119,7 +119,7 @@ class _SessionList extends StatelessWidget {
           );
         }
         if (snap.hasError) {
-          return _EmptyState(icon: Icons.error_outline, text: 'Couldn\'t load sessions.');
+          return _EmptyState(icon: Icons.error_outline, text: "We couldn't load your sessions. Try again in a moment.");
         }
         final sessions = snap.data ?? [];
         if (sessions.isEmpty) {

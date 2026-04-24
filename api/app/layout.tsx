@@ -16,11 +16,27 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://craftedday.com'),
   title: 'CraftedDay — Your daily meditation, made for you',
-  description: 'AI-generated meditations personalized to your mood, goals, and experience level. A new session every day.',
+  description: 'Personalized meditations shaped around your mood, goals, and experience — with a fresh session every day.',
   icons: {
     icon: '/favicon.png',
     apple: '/favicon.png',
+  },
+  openGraph: {
+    title: 'CraftedDay — Your daily meditation, made for you',
+    description: 'Personalized meditations shaped around your mood, goals, and experience — with a fresh session every day.',
+    url: 'https://craftedday.com',
+    siteName: 'CraftedDay',
+    images: [{ url: '/logo.png', width: 512, height: 512, alt: 'CraftedDay' }],
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'CraftedDay — Your daily meditation, made for you',
+    description: 'Personalized meditations shaped around your mood, goals, and experience — with a fresh session every day.',
+    images: ['/logo.png'],
   },
 };
 

@@ -46,8 +46,9 @@ export default function Terms() {
 
         <Section title="Subscriptions and Billing">
           <p>CraftedDay offers a free tier and a premium subscription. Premium features — including daily AI-generated sessions and full personalization — require a paid subscription.</p>
-          <p><strong className="font-medium">Billing.</strong> Subscriptions are billed through the Apple App Store. Your payment method will be charged at the beginning of each billing period (monthly or annually, depending on the plan you select).</p>
-          <p><strong className="font-medium">Auto-renewal.</strong> Subscriptions automatically renew unless you cancel at least 24 hours before the end of the current billing period. Renewal charges occur within 24 hours before the period ends.</p>
+          <p><strong className="font-medium">Pricing.</strong> The monthly subscription is $19.99 USD per month. If a free trial is offered, the trial period and post-trial price will be shown clearly on the purchase screen before you subscribe. Prices in other regions are set by Apple in your local currency and may differ.</p>
+          <p><strong className="font-medium">Billing.</strong> Subscriptions are billed through the Apple App Store. Your Apple ID will be charged at the beginning of each billing period.</p>
+          <p><strong className="font-medium">Auto-renewal.</strong> Subscriptions automatically renew at the same price unless you cancel at least 24 hours before the end of the current billing period. Renewal charges occur within 24 hours before the period ends.</p>
           <p><strong className="font-medium">Cancellation.</strong> You can cancel your subscription at any time through your iPhone&apos;s Settings app: Settings → [Your Name] → Subscriptions → CraftedDay → Cancel. Cancellation takes effect at the end of the current billing period; you retain access until then.</p>
           <p><strong className="font-medium">Refunds.</strong> All purchases are processed by Apple. Refund requests are subject to Apple&apos;s refund policies. We do not issue refunds directly.</p>
           <p><strong className="font-medium">Price changes.</strong> We may change subscription pricing with reasonable notice. Continued use of the app after a price change constitutes acceptance of the new price.</p>

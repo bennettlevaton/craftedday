@@ -43,8 +43,31 @@ class CraftedDayApp extends StatefulWidget {
   State<CraftedDayApp> createState() => _CraftedDayAppState();
 }
 
-class _CraftedDayAppState extends State<CraftedDayApp> {
+class _CraftedDayAppState extends State<CraftedDayApp>
+    with WidgetsBindingObserver {
   final _appLinks = AppLinks();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // When the user comes back from backgrounding, re-pull subscription state
+    // from the backend. Catches expirations, renewals webhook-lag, and
+    // cross-device purchases without requiring a cold start.
+    if (state == AppLifecycleState.resumed) {
+      SubscriptionService.instance.refreshFromBackend();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

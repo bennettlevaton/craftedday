@@ -714,12 +714,15 @@ export async function generateAudio(
 
     // Deterministic silence placement:
     //   - Every chunk gets its planned followingPauseSec silence after it.
-    //   - Then we add any remaining shortfall vs. target, split between gaps and tail.
+    //   - Any shortfall vs. target is distributed evenly across inter-chunk gaps.
+    //   - Tail stays at MIN_TAIL_SILENCE_SECONDS — once the close says "we return,"
+    //     more dead air just feels broken. If there are no gaps (single chunk),
+    //     the shortfall falls through to the tail as a last resort.
     const plannedTotal = rawSpokenSeconds + totalPlannedSilence + MIN_TAIL_SILENCE_SECONDS;
     const shortfall = Math.max(0, targetSeconds - plannedTotal);
     const numGaps = Math.max(0, ttsChunks.length - 1);
-    const extraPerGap = numGaps > 0 ? (shortfall * 0.6) / numGaps : 0;
-    const extraTail = shortfall - extraPerGap * numGaps;
+    const extraPerGap = numGaps > 0 ? shortfall / numGaps : 0;
+    const extraTail = numGaps > 0 ? 0 : shortfall;
     const tailSilence = MIN_TAIL_SILENCE_SECONDS + extraTail;
 
     // Assemble: [chunk0 pcm][planned pause 0 + extra gap][chunk1 pcm]...[tail]

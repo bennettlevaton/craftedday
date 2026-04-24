@@ -1,6 +1,3 @@
-import 'dart:async';
-import 'dart:convert';
-
 import 'package:clerk_auth/clerk_auth.dart' as clerk;
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
@@ -9,31 +6,8 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:uuid/uuid.dart';
 import '../theme/colors.dart';
 
-class SignInScreen extends StatefulWidget {
+class SignInScreen extends StatelessWidget {
   const SignInScreen({super.key});
-
-  @override
-  State<SignInScreen> createState() => _SignInScreenState();
-}
-
-class _SignInScreenState extends State<SignInScreen> {
-  StreamSubscription<clerk.ClerkError>? _errorSub;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _errorSub ??= ClerkAuth.errorStreamOf(context).listen((err) {
-      // ignore: avoid_print
-      print('CLERK_ERROR: code=${err.code} message=${err.message} '
-          'argument=${err.argument} errors=${err.errors?.errorMessage}');
-    });
-  }
-
-  @override
-  void dispose() {
-    _errorSub?.cancel();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,6 +50,8 @@ class _SignInScreenState extends State<SignInScreen> {
                     icon: Icons.apple,
                     onTap: () async {
                       try {
+                        // Nonce is required — Clerk rejects Apple ID tokens
+                        // without a nonce claim.
                         final credential =
                             await SignInWithApple.getAppleIDCredential(
                           nonce: const Uuid().v4(),
@@ -86,54 +62,41 @@ class _SignInScreenState extends State<SignInScreen> {
                         );
                         final idToken = credential.identityToken;
                         if (idToken == null || !context.mounted) return;
+                        // Apple only returns givenName/familyName on the very
+                        // first authorization, so fall back to placeholders.
+                        // Our own onboarding screen collects the real name.
                         final givenName = credential.givenName ?? 'Given';
                         final familyName = credential.familyName ?? 'Family';
-                        final parts = idToken.split('.');
-                        if (parts.length == 3) {
-                          try {
-                            final payload = utf8.decode(base64Url
-                                .decode(base64Url.normalize(parts[1])));
-                            // ignore: avoid_print
-                            print('APPLE_ID_TOKEN_PAYLOAD: $payload');
-                          } catch (e) {
-                            // ignore: avoid_print
-                            print('APPLE_ID_TOKEN_DECODE_ERROR: $e');
-                          }
-                        }
                         await authState.idTokenSignIn(
                           provider: clerk.IdTokenProvider.apple,
                           token: idToken,
                         );
-                        // If Clerk wants missing fields filled in for sign-up,
+                        // If Clerk still wants fields (legal/name) for sign-up,
                         // complete them now.
                         if (authState.signUp case final signUp?
                             when signUp.missingFields.isNotEmpty) {
-                          final legalAccepted =
-                              signUp.missing(clerk.Field.legalAccepted)
-                                  ? true
-                                  : null;
-                          final firstName =
-                              signUp.missing(clerk.Field.firstName)
-                                  ? givenName
-                                  : null;
-                          final lastName = signUp.missing(clerk.Field.lastName)
-                              ? familyName
-                              : null;
                           await authState.attemptSignUp(
-                            legalAccepted: legalAccepted,
-                            firstName: firstName,
-                            lastName: lastName,
+                            legalAccepted:
+                                signUp.missing(clerk.Field.legalAccepted)
+                                    ? true
+                                    : null,
+                            firstName: signUp.missing(clerk.Field.firstName)
+                                ? givenName
+                                : null,
+                            lastName: signUp.missing(clerk.Field.lastName)
+                                ? familyName
+                                : null,
                           );
                         }
                         if (context.mounted) context.go('/');
-                      } catch (e, st) {
-                        // ignore: avoid_print
-                        print('APPLE_SIGNIN_ERROR: $e');
-                        // ignore: avoid_print
-                        print('APPLE_SIGNIN_STACK: $st');
+                      } catch (_) {
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Apple sign-in failed: $e")),
+                          const SnackBar(
+                            content: Text(
+                              "We couldn't sign you in. Please try again.",
+                            ),
+                          ),
                         );
                       }
                     },

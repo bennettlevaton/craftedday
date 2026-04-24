@@ -15,5 +15,5 @@ cd "$ROOT/mobile"
 flutter run \
   --dart-define=API_BASE_URL="https://craftedday.com" \
   --dart-define=CLERK_PUBLISHABLE_KEY="pk_live_Y2xlcmsuY3JhZnRlZGRheS5jb20k" \
-  --dart-define=REVENUECAT_API_KEY="test_SbxZJBJkTvmIHSBCzvDBMyPMtoo" \
+  --dart-define=REVENUECAT_API_KEY="appl_JjKCtphOHklZhBzOHfkPrajvIYk" \
   --release

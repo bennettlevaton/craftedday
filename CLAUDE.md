@@ -382,7 +382,59 @@ The tone/structure target comes from a real meditation the user's wife recorded 
 - Arc: settle → anchor → body work → release → integrate → close
 - Generous silence between phrases (via `<break time="Xs" />`)
 
-The system prompt in `api/lib/meditation.ts:buildSystemPrompt` encodes this.
+The system prompt in `api/lib/meditation.ts` encodes this.
+
+---
+
+## Meditation Generation Pipeline
+
+All logic lives in `api/lib/meditation.ts`. Two phases: script generation (Claude) and audio synthesis (ElevenLabs + our own PCM assembly).
+
+### Phase 1 — Script (Claude)
+
+1. **Plan (Haiku)** — `generatePlan` asks `claude-haiku-4-5` for a JSON arc of 4–5 sections, each with `role`, `duration_seconds`, `guidance_density`, and `notes`. Haiku never computes spoken/silence splits.
+2. **Split derivation (code, not model)** — for each section, `sectionSpokenSeconds` applies:
+   - `ROLE_SPOKEN_FRACTION` (e.g. `open: 0.85`, `quiet_breathing: 0.28`, `close: 0.72`) for role shape.
+   - Level modifier `±0.10`: beginner +0.10, experienced −0.10. Produces overall session ratios of roughly **60% spoken (beginner) / 50% (intermediate) / 40% (experienced)** once weighted by section durations.
+   - Remainder becomes `silence_seconds`.
+3. **Write sections (Opus, parallel)** — `writeSectionScript` runs all sections through `claude-opus-4-7` via `Promise.all`. Continuity between sections uses the prior section's `notes` from the plan (not prior output text), so there's no ordering dependency. Script phase ≈ 10s for a 5-min session (down from ~22s sequential).
+4. **Prompt rules given to Opus**:
+   - Every sentence ends with exactly one `<break time="Xs" />` where X ∈ {3, 6, 9, 12}. No stacking.
+   - Allowed values are clamped by `clampBreakTags` — ElevenLabs never sees these tags, we parse them ourselves.
+   - Density table per level: beginner = more sentences + shorter breaks, experienced = fewer sentences + longer breaks.
+
+Calibration constant: `SPOKEN_CHARS_PER_SEC = 10`. Observed empirically — eleven_v3 at `speed: 0.85` produces ~10 chars of speech per second. Prompt asks Opus for `spokenSeconds * 10` chars.
+
+### Phase 2 — Audio (ElevenLabs + us)
+
+Key idea: **ElevenLabs only does pure speech. We own all silence.** Break tags never reach the TTS engine. This avoids v3's tag-handling instability (previously caused runaway 10+ minute chunks).
+
+1. **Parse** — `parseScriptSegments` splits the script into alternating `{kind: "speech", text}` and `{kind: "pause", seconds}` segments.
+2. **Build TTS chunks** — `buildTtsChunks` walks segments, accumulating speech into ~150-char chunks (`TARGET_CHARS_PER_CHUNK`). When a pause arrives and the current chunk has enough text, the pause becomes a **chunk boundary** and its duration is recorded as `followingPauseSec`. Small chunks mean nearly every break tag becomes a real silent-PCM gap at the designed sentence-end position (not clumped at coarse boundaries).
+3. **Synthesize in parallel** — `parallelMap` fires TTS requests concurrently up to `TTS_CONCURRENCY` (default 5, override via `ELEVENLABS_CONCURRENCY` env var when you upgrade the ElevenLabs plan).
+4. **Safety cap** — each chunk has an expected duration of `chars ÷ SPOKEN_CHARS_PER_SEC`. If the returned PCM exceeds `2.2× expected + 5s`, it's truncated and logged as `chunk duration exceeded safety cap`. Blast radius of any v3 hallucination is one short chunk.
+5. **Assembly** — concatenate `chunk0 PCM` + `silentPCM(followingPauseSec[0] + extraGap)` + `chunk1 PCM` + ... + tail silence. Any shortfall vs. `targetSeconds` is distributed 60% across gaps / 40% at tail on top of the designed silences. Final audio lands at target within ~1 second.
+6. **Voice consistency** — same seed across all TTS calls in a session, `stability: 0.9`, `similarity_boost: 0.95`. eleven_v3 does **not** support `previous_text` / `next_text` request stitching (returns 400), so seed + high stability is the only knob for cross-chunk prosody continuity.
+
+### Typical run (5-minute session, beginner)
+
+| Phase | Time |
+|---|---|
+| Plan (Haiku) | ~4s |
+| Sections (Opus, parallel) | ~10s |
+| Audio (10–13 chunks, 5 concurrent) | ~15–20s |
+| Upload + DB | ~1s |
+| **Total** | **~30s** |
+
+### Env / config knobs
+
+- `MEDITATION_TARGET_SECONDS` — session length. Local = 30 for dev, 600 in prod.
+- `ELEVENLABS_CONCURRENCY` — TTS parallelism cap (default 5).
+- Voice IDs in `api/lib/elevenlabs.ts`: Lauren (female), Evan (male).
+
+### Daily session timezone
+
+`/api/session/daily` and `/api/cron/generate-daily` both use `America/Los_Angeles` for the date key so PT users don't lose "today" when UTC rolls over. Cron fires at 8am UTC = midnight PT.
 
 ---
 
@@ -394,7 +446,13 @@ The system prompt in `api/lib/meditation.ts:buildSystemPrompt` encodes this.
 - **UI-first build order.** User wanted to validate the feel before wiring API integrations.
 - **Post-session rating is its own screen.** Rating is prompted immediately after a session ends while feedback is fresh — not buried in history.
 - **AWS habit, but skipped AWS.** User preferred Next.js/Vercel + Supabase-style services since they already know them; was not set on AWS.
-- **ElevenLabs model: `eleven_multilingual_v2` with tuned voice settings.** Switched from `turbo_v2_5` because turbo felt robotic for meditation. Multilingual v2 is slower but much more expressive. Settings: stability 0.75, similarity 0.75, style 0.15, speaker boost on.
+- **ElevenLabs model: `eleven_v3`, settings stability 0.9 / similarity 0.95 / style 0 / speed 0.85.** Previously used `eleven_multilingual_v2`; switched to v3 for better expressive prosody. v3 is unstable on `<break>` tags (can emit 10+ minute runaway chunks), so we strip tags and insert silence ourselves at the PCM layer. v3 also rejects `previous_text`/`next_text` (returns 400 "unsupported_model"), so cross-chunk voice consistency comes from a shared per-session seed + high stability.
+- **Silence is ours, not ElevenLabs'.** Break tags from Opus are parsed out by `parseScriptSegments` and become silent PCM buffers we concat between TTS chunks. ElevenLabs only sees pure spoken text. This fixed two problems: v3 hallucinating on tags, and the fact that break tag durations in any model don't match their written values.
+- **Small TTS chunks (~150 chars) over large ones.** Small chunks = one sentence per chunk = every break tag becomes a real silent-PCM gap at the designed position. Large chunks absorbed most pauses as ellipses and clumped silence at coarse boundaries. Tradeoff is more TTS round-trips, mitigated by concurrent requests.
+- **Parallel Opus section writes.** Sections only depend on `plan.arc[i-1].notes` (static plan data), not prior output, so `Promise.all` across sections is safe and cuts script time from ~22s to ~10s.
+- **`SPOKEN_CHARS_PER_SEC = 10`.** Calibrated from observed v3 audio — not the 15 initially assumed. Used for both the prompt char target and the duration estimate.
+- **Level modifier ±0.10.** Produces overall session spoken ratios of ~60% / 50% / 40% for beginner / intermediate / experienced once weighted by section durations. Per-section ratios (as seen in logs) look smaller but the weighted overall lands on the target.
+- **Daily session timezone is PT (America/Los_Angeles).** UTC-based date rollover made "today" disappear at 4–5pm PT. Cron fires at 8am UTC (midnight PT) and writes the date about to start; endpoint matches. Must stay aligned — if they diverge, users won't find their session.
 - **ElevenLabs Starter plan.** User upgraded from Free because Lauren/Evan library voices require paid tier.
 - **Auth uses Clerk directly — no users table.** Clerk user ID is the primary key for user_profiles and meditations. getOrCreateProfile creates the profile row lazily on first API call.
 - **OAuth uses externalApplication (Safari).** SFSafariViewController doesn't dismiss reliably after custom URL scheme callbacks. External browser works cleanly.

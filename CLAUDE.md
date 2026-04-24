@@ -32,10 +32,14 @@ AI-powered personalized meditation app. User describes their current mood/situat
 - [x] Swap all keys to `pk_live_` / `sk_live_` in Vercel + Flutter `.env`
 
 ### 4. RevenueCat + In-App Purchase
-- [ ] Create subscription product in App Store Connect (e.g. $9.99/mo, $59.99/yr)
+- [ ] Create subscription product in App Store Connect ($19.99/mo)
 - [x] Set up RevenueCat account + project
-- [ ] Connect App Store Connect to RevenueCat
+- [ ] Connect App Store Connect to RevenueCat (attach product to default offering)
+- [ ] Configure App Store Server Notifications → RC's ingest URL
+- [ ] Set RC webhook URL + `REVENUECAT_WEBHOOK_SECRET` in Vercel prod
 - [x] Integrate RevenueCat Flutter SDK
+- [x] Backend (`subscriptions` + `usage_periods` tables) is source of truth — mobile reads `/api/usage`, RC SDK only used for identity/purchase/restore + optimistic post-purchase flip
+- [x] `SKIP_SUBSCRIPTION_CHECK=true` bypasses gating everywhere (generate, daily, cron, usage endpoint) for dev
 - [x] Gate daily session card behind paywall
 - [x] Add paywall screen
 
@@ -220,15 +224,22 @@ craftedday/
 (source: `api/db/schema.ts` — Drizzle Postgres)
 
 ```
-users       — id, clerk_id, email, created_at
-              (voice_gender field needs to be added for v1)
-meditations — id, user_id, prompt, script, audio_url, duration, created_at
-              (rating, feedback fields need to be added for v1)
+user_profiles   — user_id (Clerk), name, experience_level, primary_goals[],
+                  primary_goal_custom, voice_gender, preference_summary,
+                  preference_summary_updated_at, onboarded_at, updated_at
+daily_sessions  — (user_id, date) primary key, meditation_id, created_at
+meditations     — id, user_id, prompt, script, audio_url, duration, title,
+                  feeling, what_helped, feedback, is_favorite, created_at
+meditation_jobs — async generation queue (pending → processing → done/failed)
+subscriptions   — clerk_id PK, status, period_type, product_id,
+                  period_start, period_end — one row per user, fed by RC webhook
+usage_periods   — append-only; one row per billing period. custom_minutes_used,
+                  period_end=NULL means current open period
 ```
 
-**Schema changes still needed:**
-- Add `voice_gender` to users
-- Add `rating` (int) and `feedback` (text) to meditations
+No `users` table — Clerk user ID is the primary key across `user_profiles`,
+`meditations`, and `subscriptions`. `getOrCreateProfile` creates the profile
+row lazily on first API call.
 
 ---
 
@@ -300,6 +311,8 @@ Current focus: `POST /api/meditation/generate` — the core loop.
 - [x] Onboarding flow (name, experience, primary goal)
 - [x] Preference summary: Claude Sonnet distills all rated sessions, cached on profile, refreshed fire-and-forget from /rate
 - [x] Listener context (name, experience, goal, preference summary) injected into generate system prompt
+- [x] Subscription gating end-to-end: `checkSubscriptionAndQuota` on `/generate`, `isSubscribed` on `/session/daily` + cron enqueue, mobile `SubscriptionService` reads `/api/usage` as source of truth
+- [x] Support flow: lifebuoy icon in home AppBar + early-exit sheet in player (before 70% played) with prefilled mailto to support@craftedday.com, clipboard fallback when no mail client
 
 **Tech debt to revisit:**
 - **Stats recompute is O(n) per fetch.** `GET /api/stats` pulls every row in `meditations` for the user and recomputes streak / hours / favorite time on every call. Fine at current scale; at some point denormalize onto `user_profiles` (current_streak, total_sessions, total_seconds, last_session_at) and maintain on write from `/generate` and `/rate`.
@@ -339,9 +352,16 @@ Current focus: `POST /api/meditation/generate` — the core loop.
 - [x] Auth: Clerk sign-in (Apple native + Google OAuth), all routes protected
 - [x] users table removed — Clerk user ID is the direct anchor
 - [x] App icons generated
+- [x] RevenueCat subscription plumbing (schema, webhook, paywall, backend-as-truth)
+- [x] Contact-support flow (home lifebuoy + early-exit sheet)
 - [ ] Auth: test full flow on real device (sign in → onboarding → home → session)
-- [ ] Deploy auth changes to Vercel
-- [ ] RevenueCat subscriptions
+- [ ] Apple Developer account + Sign In with Apple capability
+- [ ] Create $19.99/mo subscription product in App Store Connect, attach to RC offering
+- [ ] App Store Server Notifications → RC ingest URL
+- [ ] RC webhook + `REVENUECAT_WEBHOOK_SECRET` in Vercel prod
+- [ ] Rotate `CRON_SECRET` in Vercel
+- [ ] App Store Connect listing (name, description, screenshots, review URL)
+- [ ] TestFlight build + sandbox purchase validation
 - [ ] Generation speed for long sessions
 - [ ] "Today's session" home redesign (see Decisions Log)
 
@@ -460,5 +480,10 @@ Key idea: **ElevenLabs only does pure speech. We own all silence.** Break tags n
 - **ElevenLabs Starter plan.** User upgraded from Free because Lauren/Evan library voices require paid tier.
 - **Auth uses Clerk directly — no users table.** Clerk user ID is the primary key for user_profiles and meditations. getOrCreateProfile creates the profile row lazily on first API call.
 - **OAuth uses externalApplication (Safari).** SFSafariViewController doesn't dismiss reliably after custom URL scheme callbacks. External browser works cleanly.
+- **Backend is source of truth for subscription state.** The `subscriptions` table (written by RC webhook) decides access; mobile reads `/api/usage` on login and treats that as authoritative. RC SDK is only used for (a) identifying the user via `Purchases.logIn(clerkId)`, (b) running purchase/restore flows, and (c) an optimistic `isPremium = true` flip right after a successful purchase while we wait for the webhook to land. No more SDK-cache-drift giving expired users access.
+- **`rc_customer_id` column dropped from `subscriptions`.** Since `Purchases.logIn(clerkId)` runs before any purchase, RC's `app_user_id` *is* the Clerk ID — the column was always a duplicate of `clerk_id`. If we ever allow anonymous-purchase-then-login flows we'd need to bring back alias handling.
+- **Daily session is a subscriber perk with no quota.** Quota only applies to custom generation (`/api/meditation/generate`). `/api/session/daily` and the cron enqueue simply gate on `isSubscribed()`.
+- **`SKIP_SUBSCRIPTION_CHECK=true` bypasses all gates** — `/generate`, `/session/daily`, cron, and `/api/usage` (which returns `subscribed:true` so mobile passes paywall). Makes local dev frictionless without needing a sandbox sub.
+- **Contact support via mailto + clipboard fallback.** Home-screen lifebuoy opens a prefilled mail draft (subject, user ID, platform, optional meditation ID). Player's early-exit sheet (shown when user closes before 70% played) has "Just stopping" / "Something felt off" / "Audio problem" — the latter two open the mail draft with the failing session's ID. Simulator and devices without Mail get the email copied to clipboard + a snackbar. No form, no backend, no vendor until volume justifies one.
 - **"Today's session" home redesign proposed.** Key concepts: pre-generated daily session card, 3-state post-session check-in (calmer/same/more tense), weekly summary card, return nudge with reminder. Ship order: today card → check-in → sessions+feelings storage → weekly summary.
 - **Script style is opinionated.** The Claude system prompt enforces inclusive "we" language and no generic "welcome" preamble, modeled on a real meditation script from the user's wife.

@@ -11,11 +11,16 @@ const PLANNER_MODEL = "claude-haiku-4-5";
 const WRITER_MODEL  = "claude-opus-4-7";
 const SUMMARY_MODEL = "claude-sonnet-4-6";
 
-// Two separate rates — named explicitly so they are never confused.
-// PROMPT: chars we ask Opus to write per second of spoken time (generation target).
-// AUDIO:  observed spoken chars per second of actual narration (for duration estimation).
-const SPOKEN_CHARS_PER_SEC_PROMPT = 28;
-const SPOKEN_CHARS_PER_SEC_AUDIO  = 15;
+// Single observed rate — chars of spoken text produced per second of actual narration
+// at voice speed 0.85 with eleven_v3. Calibrated empirically across multiple runs
+// (observedSpokenCharsPerSec landed at 8–10 consistently). Used for BOTH the
+// generation target asked of Opus and the post-hoc duration estimate.
+const SPOKEN_CHARS_PER_SEC = 10;
+
+// We own silence ourselves — break tags never reach ElevenLabs. So we honor their
+// written duration exactly when estimating and when rendering silent PCM.
+// Average used for planning only (prompt-side estimate of "how many tags per section").
+const AVG_BREAK_SECONDS = 6;
 
 // Spoken fraction per section role — derived in code so Haiku never does ratio math.
 const ROLE_SPOKEN_FRACTION: Record<string, number> = {
@@ -49,24 +54,31 @@ function sectionSpokenSeconds(
 ): number {
   const normalizedRole = role === "silent" ? "quiet_breathing" : role;
   const base = ROLE_SPOKEN_FRACTION[normalizedRole] ?? 0.65;
-  const modifier = experienceLevel === "experienced" ? -0.05
-    : experienceLevel === "beginner" ? +0.05
+  // Per-role modifier that produces these overall-session ratios once weighted
+  // by section durations: beginner ≈ 60% spoken · intermediate ≈ 50% · experienced ≈ 40%.
+  const modifier = experienceLevel === "experienced" ? -0.10
+    : experienceLevel === "beginner" ? +0.10
     : 0;
   const minSpoken = Math.min(
-    durationSeconds - 6,
-    ROLE_MIN_SPOKEN_SECONDS[normalizedRole] ?? 20,
+    durationSeconds - 4,
+    ROLE_MIN_SPOKEN_SECONDS[normalizedRole] ?? 12,
   );
-  const computed = Math.round(durationSeconds * Math.min(0.92, Math.max(0.20, base + modifier)));
+  const computed = Math.round(durationSeconds * Math.min(0.92, Math.max(0.15, base + modifier)));
   return Math.max(minSpoken, computed);
+}
+
+function countBreakTags(script: string): number {
+  const matches = script.match(/<break time="\d+(?:\.\d+)?s"\s*\/>/g);
+  return matches ? matches.length : 0;
 }
 
 function estimateScriptDuration(script: string): number {
   let breakSeconds = 0;
   const re = /<break time="(\d+(?:\.\d+)?)s"\s*\/>/g;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = re.exec(script)) !== null) breakSeconds += parseFloat(m[1]);
   const spokenChars = script.replace(/<break[^>]+\/>/g, "").replace(/\s+/g, " ").trim().length;
-  return breakSeconds + spokenChars / SPOKEN_CHARS_PER_SEC_AUDIO;
+  return breakSeconds + spokenChars / SPOKEN_CHARS_PER_SEC;
 }
 
 type ListenerContext = {
@@ -167,10 +179,10 @@ BREATH
 - A break after "breathe in" means the listener is actively inhaling. The next words must resolve that breath.
 
 SILENCE
-- Every sentence ends with at least one <break time="Xs" /> tag.
-- Use only 3s, 6s, or 9s break tags.
-- Do not stack consecutive break tags.
-- Use fewer 9s tags than 3s and 6s tags.
+- Every sentence ends with exactly one <break time="Xs" /> tag.
+- Allowed values: 3s (short), 6s (medium), 9s (long), 12s (very long, quiet sections only).
+- Do not stack consecutive break tags. One tag per sentence end.
+- Do not use any other numeric value. Pick one of 3, 6, 9, 12.
 
 DURATION DISCIPLINE
 - Hit the spoken target. Do not come in materially short.
@@ -200,24 +212,24 @@ function densityInstructions(density: string, experienceLevel: string | null): s
 
   const table: Record<string, Record<string, string>> = {
     high: {
-      beginner:     "8–10 short sentences. Use mostly 3s pauses, occasional 6s pauses. Stay close and active.",
-      intermediate: "7–9 short sentences. Use 3s pauses, occasional 6s pauses. Keep the voice present.",
-      experienced:  "6–8 short sentences. Use 3s pauses, occasional 6s pauses. Efficient but still present.",
+      beginner:     "8–10 short sentences. Mostly 3s breaks; a couple 6s. Stay close and active.",
+      intermediate: "7–9 short sentences. Mostly 3s breaks; occasional 6s. Keep the voice present.",
+      experienced:  "6–8 short sentences. Mostly 3s breaks; occasional 6s. Efficient but still present.",
     },
     medium: {
-      beginner:     "6–8 short sentences. Use 3s and 6s pauses. Keep clear anchor reminders throughout.",
-      intermediate: "5–7 short sentences. Use mostly 6s pauses with some 3s pauses. Let the section breathe without disappearing.",
-      experienced:  "4–6 short sentences. Use mostly 6s pauses with occasional 3s or 9s pauses. Minimal but present.",
+      beginner:     "6–8 short sentences. Mix of 3s and 6s breaks. Keep clear anchor reminders throughout.",
+      intermediate: "5–7 short sentences. Mostly 6s; some 3s. Let the section breathe without disappearing.",
+      experienced:  "4–6 short sentences. Mostly 6s; an occasional 9s. Minimal but present.",
     },
     low: {
-      beginner:     "4–5 short sentences. Use mostly 6s pauses and at most one 9s pause. Keep gentle check-ins present.",
-      intermediate: "4 short sentences. Use mostly 6s pauses and at most one or two 9s pauses. Sparse but still active.",
-      experienced:  "3–4 short sentences. Use 6s pauses and at most two 9s pauses. Quiet, but not empty.",
+      beginner:     "4–5 short sentences. Mostly 6s; at most one 9s. Keep gentle check-ins present.",
+      intermediate: "4 short sentences. Mostly 6s; one or two 9s. Sparse but still active.",
+      experienced:  "3–4 short sentences. Mix of 6s and 9s breaks. Quiet, but not empty.",
     },
     silent: {
-      beginner:     "Treat this like a very quiet section, not a mute section: 4 short sentences minimum, with 6s and 9s pauses.",
-      intermediate: "Treat this like a very quiet section, not a mute section: 3–4 short sentences, with 6s and 9s pauses.",
-      experienced:  "Treat this like a very quiet section, not a mute section: 3 short sentences minimum, with 6s and 9s pauses.",
+      beginner:     "Quiet, not mute: 4 short sentences minimum, each ending with a 9s or 12s break.",
+      intermediate: "Quiet, not mute: 3–4 short sentences, each ending with a 9s or 12s break.",
+      experienced:  "Quiet, not mute: 3 short sentences minimum, each ending with a 9s or 12s break.",
     },
   };
 
@@ -232,9 +244,10 @@ function buildSectionUserPrompt(
   isFirst: boolean,
   prevSectionNotes: string | null,
 ): string {
-  const targetSpokenChars = Math.round(section.spoken_seconds * SPOKEN_CHARS_PER_SEC_PROMPT);
+  const targetSpokenChars = Math.round(section.spoken_seconds * SPOKEN_CHARS_PER_SEC);
   const minSpokenChars = Math.round(targetSpokenChars * 0.9);
   const maxSpokenChars = Math.round(targetSpokenChars * 1.15);
+  const targetBreakTags = Math.max(1, Math.round(section.silence_seconds / AVG_BREAK_SECONDS));
   const densityGuide = densityInstructions(section.guidance_density, plan.experienceLevel ?? null);
 
   return `SESSION
@@ -250,9 +263,10 @@ ${section.notes}
 
 DENSITY: ${densityGuide}
 
-SPOKEN TARGET: ${targetSpokenChars} characters.
+SPOKEN TARGET: ${targetSpokenChars} characters (this translates to ~${section.spoken_seconds}s of narration).
 Minimum acceptable: ${minSpokenChars} characters.
 Hard maximum: ${maxSpokenChars} characters.
+SILENCE TARGET: approximately ${targetBreakTags} total <break time="3s" /> tags across the section (they may be single or stacked).
 Do not come in under the minimum unless doing so would force obvious repetition.
 The section should feel complete, spacious, and substantial.
 
@@ -387,7 +401,6 @@ export async function generateScript(
   try {
     const stripped = planText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
     const raw = JSON.parse(stripped);
-    // Derive spoken/silence split in code — Haiku only outputs role + duration_seconds
     raw.arc = (raw.arc ?? []).map((s: PlanSection) => {
       const normalizedRole = s.role === "silent" ? "quiet_breathing" : s.role;
       const spokenSecs = sectionSpokenSeconds(normalizedRole, s.duration_seconds, listenerContext.experienceLevel);
@@ -395,7 +408,7 @@ export async function generateScript(
         ...s,
         role: normalizedRole,
         spoken_seconds: spokenSecs,
-        silence_seconds: Math.max(6, s.duration_seconds - spokenSecs),
+        silence_seconds: Math.max(2, s.duration_seconds - spokenSecs),
       };
     });
     raw.experienceLevel = listenerContext.experienceLevel;
@@ -404,131 +417,185 @@ export async function generateScript(
     throw new Error("Failed to parse plan JSON from Haiku");
   }
 
-  log("write", "generating sections sequentially", {
+  log("write", "generating sections in parallel", {
     sections: plan.arc.length,
     arc: plan.arc.map(s => ({ role: s.role, duration: s.duration_seconds, spoken: s.spoken_seconds, silence: s.silence_seconds })),
   });
 
-  // Phase 2: Write sections sequentially so continuity cues are real
+  // Phase 2: Write all sections in parallel. Continuity cues come from plan.arc[i-1].notes
+  // (static plan data, not prior section text), so there's no real ordering dependency.
   const sectionSystem = buildSectionSystem(listenerBlock);
-  const sectionTexts: string[] = [];
-  for (let i = 0; i < plan.arc.length; i++) {
-    const section = plan.arc[i];
-    const text = await writeSectionScript(
-      section,
-      plan,
-      userPrompt,
-      timeOfDay,
-      sectionSystem,
-      i === 0,
-      i > 0 ? plan.arc[i - 1].notes : null,
-    );
-    sectionTexts.push(text);
-  }
+  const sectionTexts = await Promise.all(
+    plan.arc.map((section, i) =>
+      writeSectionScript(
+        section,
+        plan,
+        userPrompt,
+        timeOfDay,
+        sectionSystem,
+        i === 0,
+        i > 0 ? plan.arc[i - 1].notes : null,
+      ),
+    ),
+  );
 
-  const script = sectionTexts.join("\n\n");
+  const rawScript = sectionTexts.join("\n\n");
 
-  // Enforce the per-plan silence budget — scale all break values proportionally.
-  // Now that normalizeBreakTags is removed, ElevenLabs honors individual values
-  // directly so scaling works correctly without stacking side-effects.
-  const plannedSilence = plan.arc.reduce((s, sec) => s + sec.silence_seconds, 0);
-  const processed = enforceBreakBudget(script, plannedSilence);
+  // Clamp any out-of-range break tag values to the allowed set {3, 6, 9, 12}.
+  // ElevenLabs never sees these — we parse them into silent PCM ourselves.
+  const processed = clampBreakTags(rawScript);
 
   log("write", "script ready", {
     ms: Date.now() - started,
     sections: plan.arc.length,
     scriptChars: processed.length,
+    breakTagCount: countBreakTags(processed),
     estimatedSeconds: Math.round(estimateScriptDuration(processed)),
     targetSeconds,
-    rawBreakSeconds: Math.round(sumBreakSeconds(script)),
-    finalBreakSeconds: Math.round(sumBreakSeconds(processed)),
   });
 
   return { script: processed, title: plan.title ?? "A moment for you" };
 }
 
-function sumBreakSeconds(script: string): number {
-  let total = 0;
-  const re = /<break time="(\d+(?:\.\d+)?)s"\s*\/>/g;
-  let m;
-  while ((m = re.exec(script)) !== null) total += parseFloat(m[1]);
-  return total;
-}
-
-// If the model over-spends the silence budget, scale all break values down
-// proportionally so total silence fits within budget before normalizing.
-function enforceBreakBudget(script: string, budgetSeconds: number): string {
-  const total = sumBreakSeconds(script);
-  if (total <= budgetSeconds) return script;
-  const scale = budgetSeconds / total;
+// Clamp any stray break tag values to the allowed set {3, 6, 9, 12}. Anything else
+// gets snapped to the nearest allowed value so parsing stays predictable.
+function clampBreakTags(script: string): string {
+  const allowed = [3, 6, 9, 12];
   return script.replace(/<break time="(\d+(?:\.\d+)?)s"\s*\/>/g, (_, secs) => {
-    const scaled = Math.max(1, Math.round(parseFloat(secs) * scale * 10) / 10);
-    return `<break time="${scaled}s" />`;
+    const val = parseFloat(secs);
+    const snapped = allowed.reduce((best, a) =>
+      Math.abs(a - val) < Math.abs(best - val) ? a : best,
+    allowed[0]);
+    return `<break time="${snapped}s" />`;
   });
 }
 
 
-// 10-second trailing silence so sessions don't end abruptly.
-// Stacked 3s tags since ElevenLabs caps single tags at ~3s.
-const TRAILING_SILENCE =
-  ' <break time="3s" /> <break time="3s" /> <break time="3s" /> <break time="3s" />';
+// Minimum silence inserted at the tail of every session.
+const MIN_TAIL_SILENCE_SECONDS = 6;
 
-// eleven_v3 hard limit is ~5 min per request. Split long scripts into chunks
-// at natural section-transition boundaries (lines ending with multiple break tags
-// followed by a blank line) so the MP3 join lands in silence.
-function splitScriptIntoChunks(script: string, numChunks = 5): string[] {
-  const breakPositions: number[] = [];
-  let i = 0;
-  while (i < script.length) {
-    const idx = script.indexOf("\n\n", i);
-    if (idx === -1) break;
-    breakPositions.push(idx);
-    i = idx + 2;
+// Parallelism for TTS requests — capped by your ElevenLabs plan's concurrent-request
+// limit. Override via ELEVENLABS_CONCURRENCY env var when you upgrade the plan.
+const TTS_CONCURRENCY = Math.max(
+  1,
+  parseInt(process.env.ELEVENLABS_CONCURRENCY ?? "5", 10) || 5,
+);
+
+// Target speech chars per TTS chunk. Small value = one chunk per sentence-ish, which
+// means every break tag Opus wrote gets honored as exact PCM silence at the right
+// place (not clumped at coarse chunk boundaries). Small-chunk cost is more TTS
+// round-trips — mitigated by concurrency above.
+const TARGET_CHARS_PER_CHUNK = 150;
+
+// Safety cap: if a v3 chunk returns more audio than (expected * this multiplier),
+// we truncate. Expected = text.length / SPOKEN_CHARS_PER_SEC. This keeps a runaway
+// chunk from producing 10+ minutes of garbage.
+const CHUNK_DURATION_SAFETY_MULTIPLIER = 2.2;
+
+type ScriptSegment =
+  | { kind: "speech"; text: string }
+  | { kind: "pause"; seconds: number };
+
+// Parse a script with <break time="Xs" /> tags into alternating speech/pause segments.
+// Break tags are fully owned by us from here on — they never reach ElevenLabs.
+function parseScriptSegments(script: string): ScriptSegment[] {
+  const segments: ScriptSegment[] = [];
+  const re = /<break time="(\d+(?:\.\d+)?)s"\s*\/>/g;
+  let lastIdx = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(script)) !== null) {
+    const before = script.slice(lastIdx, m.index).replace(/\s+/g, " ").trim();
+    if (before) segments.push({ kind: "speech", text: before });
+    segments.push({ kind: "pause", seconds: parseFloat(m[1]) });
+    lastIdx = m.index + m[0].length;
+  }
+  const tail = script.slice(lastIdx).replace(/\s+/g, " ").trim();
+  if (tail) segments.push({ kind: "speech", text: tail });
+  return segments;
+}
+
+type TtsChunk = {
+  text: string;               // plain speech sent to ElevenLabs (no break tags)
+  followingPauseSec: number;  // silent PCM to concat AFTER this chunk's audio
+};
+
+// Group segments into TTS chunks. A chunk is a run of speech joined by the pauses
+// that fall inside it (rendered as "..." so ElevenLabs gives a natural micro-pause).
+// When a pause arrives and the current chunk has enough text, that pause becomes
+// the chunk boundary and its seconds are preserved as inter-chunk silent PCM.
+function buildTtsChunks(segments: ScriptSegment[]): TtsChunk[] {
+  const chunks: TtsChunk[] = [];
+  let currentText = "";
+  let trailingPause = 0;
+
+  const pushChunk = (pauseAfter: number) => {
+    if (!currentText) return;
+    chunks.push({ text: currentText.trim(), followingPauseSec: pauseAfter });
+    currentText = "";
+  };
+
+  for (const seg of segments) {
+    if (seg.kind === "speech") {
+      currentText = currentText ? `${currentText} ${seg.text}` : seg.text;
+      continue;
+    }
+    // pause
+    if (currentText.length >= TARGET_CHARS_PER_CHUNK) {
+      pushChunk(seg.seconds);
+    } else if (!currentText) {
+      // Leading pause before any speech — tack onto whatever comes next.
+      trailingPause += seg.seconds;
+    } else {
+      // Pause inside a chunk — render as ellipsis so TTS still beats slightly,
+      // but preserve the DESIGNED silence as added silent PCM at the boundary
+      // by folding it into the next boundary pause.
+      currentText += seg.seconds >= 6 ? " ... ... " : " ... ";
+    }
   }
 
-  if (breakPositions.length < numChunks - 1) return [script];
-
-  const MULTI_BREAK_RE = /(<break time="\d+s" \/>[\s]*){2,}$/;
-  const MIN_CHUNK = 100;
-
-  function findBestSplit(targetPos: number, existingSplits: number[]): number {
-    const eligible = (p: number) => existingSplits.every((s) => Math.abs(p - s) > MIN_CHUNK);
-    const inWindow = (p: number, w: number) => Math.abs(p - targetPos) <= w;
-
-    const tight = breakPositions.filter((p) => eligible(p) && inWindow(p, script.length * 0.12));
-    const pool = tight.length > 0
-      ? tight
-      : breakPositions.filter((p) => eligible(p) && inWindow(p, script.length * 0.25));
-    if (pool.length === 0) return targetPos;
-
-    return pool
-      .map((p) => {
-        const preceding = script.slice(Math.max(0, p - 120), p).trimEnd();
-        const hasMultiBreak = MULTI_BREAK_RE.test(preceding);
-        const distancePenalty = Math.abs(p - targetPos) / script.length;
-        return { p, score: (hasMultiBreak ? 0.3 : 0) - distancePenalty };
-      })
-      .sort((a, b) => b.score - a.score)[0].p;
+  if (currentText) {
+    pushChunk(0);
   }
 
-  const splits: number[] = [];
-  for (let k = 1; k < numChunks; k++) {
-    splits.push(findBestSplit(Math.floor((script.length * k) / numChunks), splits));
+  // Prepend any leading pause to the first chunk's preceding silence (we'll add
+  // it to the tail silence for simplicity — listener notices tail much more).
+  if (trailingPause > 0 && chunks.length > 0) {
+    chunks[chunks.length - 1].followingPauseSec += trailingPause;
   }
 
-  const boundaries = [0, ...splits, script.length];
-  const chunks = boundaries
-    .slice(0, -1)
-    .map((start, k) => script.slice(start, boundaries[k + 1]).trim())
-    .filter((c) => c.replace(/<break[^>]+\/>/g, "").trim().length >= MIN_CHUNK);
-
-  if (chunks.length < 2) return [script];
   return chunks;
+}
+
+// Bounded-concurrency executor so we don't blast 20 parallel TTS requests.
+async function parallelMap<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= items.length) return;
+      results[idx] = await fn(items[idx], idx);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, () => worker()),
+  );
+  return results;
 }
 
 // PCM spec: 22050 Hz, 16-bit signed little-endian, mono.
 const PCM_SAMPLE_RATE = 22050;
 const PCM_BYTE_RATE = PCM_SAMPLE_RATE * 2; // 16-bit mono
+
+// Produce N seconds of silent 16-bit PCM at PCM_SAMPLE_RATE. Silence = all-zero bytes.
+function silencePcm(seconds: number): Buffer {
+  const bytes = Math.max(0, Math.round(seconds * PCM_BYTE_RATE));
+  return Buffer.alloc(bytes);
+}
 
 function pcmToMp3(pcm: Buffer): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -549,19 +616,25 @@ async function synthesizeChunk(
   text: string,
   voiceId: string,
   voiceSettings: Record<string, unknown>,
+  seed: number,
 ): Promise<Buffer> {
+  // eleven_v3 doesn't support previous_text/next_text request stitching. The only
+  // cross-chunk consistency knobs available are voice_settings (stability etc.)
+  // and a shared seed — passing the same seed to every chunk in a session makes
+  // the model's random draws reproducible, which reduces accent/pace drift.
   const stream = await elevenlabs.textToSpeech.convert(voiceId, {
     text,
     model_id: "eleven_v3",
     output_format: "pcm_22050",
     voice_settings: voiceSettings,
+    seed,
   }, { timeoutInSeconds: 300 });
   const parts: Buffer[] = [];
   for await (const chunk of stream) {
     parts.push(Buffer.from(chunk));
   }
   return Buffer.concat(parts);
-}""
+}
 
 export async function generateAudio(
   script: string,
@@ -571,54 +644,116 @@ export async function generateAudio(
   const started = Date.now();
   const voiceId = VOICES[voiceGender];
   const voiceSettings = {
-    stability: 0.8,
-    similarity_boost: 0.9,
+    // Higher stability = less random creative drift between chunks (accent, pace,
+    // intonation stay more consistent across the ~10 separate TTS calls per session).
+    // Tradeoff: slightly less expressive prosody.
+    stability: 0.9,
+    similarity_boost: 0.95,
     style: 0.0,
     use_speaker_boost: true,
     speed: 0.85,
   };
 
-  const chunks = splitScriptIntoChunks(script);
+  // Parse the script into speech/pause segments and build TTS chunks.
+  // ElevenLabs only sees pure spoken text — never break tags. We own silence entirely.
+  const segments = parseScriptSegments(script);
+  const ttsChunks = buildTtsChunks(segments);
+  const totalPlannedSilence = ttsChunks.reduce((a, c) => a + c.followingPauseSec, 0);
+
   log("elevenlabs", "synthesizing audio", {
     voiceGender,
     voiceId,
     scriptChars: script.length,
     targetSeconds,
-    chunks: chunks.length,
-    chunkChars: chunks.map((c) => c.length),
+    chunks: ttsChunks.length,
+    chunkChars: ttsChunks.map((c) => c.text.length),
+    plannedInterChunkSilence: ttsChunks.map((c) => c.followingPauseSec),
+    totalPlannedSilence,
     model: "eleven_v3",
     voiceSettings,
   });
 
   try {
-    // Add trailing silence only to the last chunk, then fire all in parallel.
-    const texts = chunks.map((c, idx) =>
-      idx === chunks.length - 1 ? c.trimEnd() + TRAILING_SILENCE : c,
-    );
+    // Synthesize all chunks with bounded concurrency + per-chunk duration safety cap.
+    // If a v3 chunk hallucinates (returns >2.2x expected audio), we truncate it.
+    // One random seed for the whole session. Every chunk uses it so the voice
+    // samples from the same generative neighborhood — less accent/pace drift.
+    const sessionSeed = Math.floor(Math.random() * 2_147_483_647);
 
-    // Raw PCM chunks — no headers, trivially concatenatable.
-    const pcmChunks = await Promise.all(
-      texts.map((text) => synthesizeChunk(text, voiceId, voiceSettings)),
-    );
-    const pcmData = Buffer.concat(pcmChunks);
+    const pcmChunks = await parallelMap(ttsChunks, TTS_CONCURRENCY, async (chunk, idx) => {
+      const expectedSec = Math.max(4, chunk.text.length / SPOKEN_CHARS_PER_SEC);
+      const maxSec = expectedSec * CHUNK_DURATION_SAFETY_MULTIPLIER + 5;
+      const pcm = await synthesizeChunk(
+        chunk.text,
+        voiceId,
+        voiceSettings,
+        sessionSeed,
+      );
+      const actualSec = pcm.length / PCM_BYTE_RATE;
+      if (actualSec > maxSec) {
+        const truncated = pcm.subarray(0, Math.round(maxSec * PCM_BYTE_RATE));
+        log("elevenlabs", "chunk duration exceeded safety cap, truncating", {
+          chunkIndex: idx,
+          textChars: chunk.text.length,
+          expectedSec: Math.round(expectedSec),
+          actualSec: Math.round(actualSec),
+          truncatedToSec: Math.round(maxSec),
+        });
+        return truncated;
+      }
+      return pcm;
+    });
+
+    // Measure real spoken audio per chunk.
+    const chunkDurations = pcmChunks.map((b) => b.length / PCM_BYTE_RATE);
+    const rawSpokenSeconds = chunkDurations.reduce((a, b) => a + b, 0);
+
+    // Deterministic silence placement:
+    //   - Every chunk gets its planned followingPauseSec silence after it.
+    //   - Then we add any remaining shortfall vs. target, split between gaps and tail.
+    const plannedTotal = rawSpokenSeconds + totalPlannedSilence + MIN_TAIL_SILENCE_SECONDS;
+    const shortfall = Math.max(0, targetSeconds - plannedTotal);
+    const numGaps = Math.max(0, ttsChunks.length - 1);
+    const extraPerGap = numGaps > 0 ? (shortfall * 0.6) / numGaps : 0;
+    const extraTail = shortfall - extraPerGap * numGaps;
+    const tailSilence = MIN_TAIL_SILENCE_SECONDS + extraTail;
+
+    // Assemble: [chunk0 pcm][planned pause 0 + extra gap][chunk1 pcm]...[tail]
+    const assembled: Buffer[] = [];
+    for (let i = 0; i < pcmChunks.length; i++) {
+      assembled.push(pcmChunks[i]);
+      const isLast = i === pcmChunks.length - 1;
+      const plannedPause = ttsChunks[i].followingPauseSec;
+      if (isLast) {
+        // Fold any planned pause on the last chunk into tail.
+        assembled.push(silencePcm(plannedPause + tailSilence));
+      } else {
+        assembled.push(silencePcm(plannedPause + extraPerGap));
+      }
+    }
+    const pcmData = Buffer.concat(assembled);
     const buf = await pcmToMp3(pcmData);
 
-    // Duration from raw PCM before encoding (exact)
-    const estimatedDurationSeconds = Math.round(pcmData.length / PCM_BYTE_RATE);
-    const durationErrorSeconds = estimatedDurationSeconds - targetSeconds;
+    const finalDurationSeconds = Math.round(pcmData.length / PCM_BYTE_RATE);
+    const durationErrorSeconds = finalDurationSeconds - targetSeconds;
     const durationErrorPct = Math.round((durationErrorSeconds / targetSeconds) * 100);
-    const spokenChars = script.replace(/<break[^>]+\/>/g, "").replace(/\s+/g, " ").trim().length;
-    const observedCharsPerSecond = +(spokenChars / estimatedDurationSeconds).toFixed(2);
+    const totalSpokenChars = ttsChunks.reduce((a, c) => a + c.text.length, 0);
+    const observedSpokenCharsPerSec = +(totalSpokenChars / rawSpokenSeconds).toFixed(2);
 
     log("elevenlabs", "audio ready", {
       ms: Date.now() - started,
       bytes: buf.length,
       targetSeconds,
-      estimatedDurationSeconds,
+      rawSpokenSeconds: Math.round(rawSpokenSeconds),
+      chunkDurations: chunkDurations.map((s) => Math.round(s)),
+      totalPlannedSilence,
+      extraPerGap: Math.round(extraPerGap),
+      tailSilence: Math.round(tailSilence),
+      finalDurationSeconds,
       durationErrorSeconds,
       durationErrorPct: `${durationErrorPct > 0 ? "+" : ""}${durationErrorPct}%`,
-      scriptChars: script.length,
-      observedCharsPerSecond,
+      totalSpokenChars,
+      observedSpokenCharsPerSec,
     });
 
     return buf;

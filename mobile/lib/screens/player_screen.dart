@@ -6,6 +6,7 @@ import 'package:just_audio/just_audio.dart';
 import '../services/api_service.dart';
 import '../services/music_service.dart';
 import '../services/notification_service.dart';
+import '../services/support_service.dart';
 import '../theme/colors.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -94,6 +95,50 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
   }
 
+  // If the user bails before ~70% of the session, check in. Past that we
+  // assume they got enough out of it and close silently.
+  Future<void> _handleClose() async {
+    final pos = _player.position.inSeconds;
+    final total = widget.duration;
+    final finishedEnough = total > 0 && pos / total >= 0.7;
+
+    if (_loadFailed || !finishedEnough) {
+      final reason = await showModalBottomSheet<_ExitReason>(
+        context: context,
+        backgroundColor: AppColors.background,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (_) => const _EarlyExitSheet(),
+      );
+      if (!mounted) return;
+
+      switch (reason) {
+        case _ExitReason.somethingOff:
+          await SupportService.open(
+            context: context,
+            subject: 'Something felt off in my session',
+            meditationId: widget.id,
+            note: 'Hi — something felt off about this session:',
+          );
+          break;
+        case _ExitReason.audio:
+          await SupportService.open(
+            context: context,
+            subject: 'Audio problem during session',
+            meditationId: widget.id,
+            note: 'Hi — I hit an audio problem during this session:',
+          );
+          break;
+        case _ExitReason.stopped:
+        case null:
+          break;
+      }
+    }
+
+    if (mounted) context.pop();
+  }
+
   @override
   void dispose() {
     _stateSub?.cancel();
@@ -112,7 +157,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         leading: IconButton(
           icon: const Icon(Icons.close, size: 22),
           color: AppColors.textSecondary,
-          onPressed: () => context.pop(),
+          onPressed: _handleClose,
         ),
       ),
       body: SafeArea(
@@ -366,6 +411,110 @@ class _ErrorView extends StatelessWidget {
         ),
         const SizedBox(height: 24),
       ],
+    );
+  }
+}
+
+enum _ExitReason { stopped, somethingOff, audio }
+
+class _EarlyExitSheet extends StatelessWidget {
+  const _EarlyExitSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text('Leaving early?', style: textTheme.headlineMedium),
+            const SizedBox(height: 8),
+            Text(
+              'Let us know so we can make this better.',
+              style: textTheme.bodyMedium?.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 20),
+            _ExitRow(
+              label: 'Just needed to stop',
+              onTap: () => Navigator.of(context).pop(_ExitReason.stopped),
+            ),
+            _ExitRow(
+              label: 'Something felt off',
+              trailing: 'Contact us',
+              onTap: () =>
+                  Navigator.of(context).pop(_ExitReason.somethingOff),
+            ),
+            _ExitRow(
+              label: 'Audio problem',
+              trailing: 'Contact us',
+              onTap: () => Navigator.of(context).pop(_ExitReason.audio),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExitRow extends StatelessWidget {
+  final String label;
+  final String? trailing;
+  final VoidCallback onTap;
+
+  const _ExitRow({
+    required this.label,
+    required this.onTap,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(label, style: textTheme.bodyLarge),
+            ),
+            if (trailing != null) ...[
+              Text(
+                trailing!,
+                style: textTheme.bodyMedium?.copyWith(
+                  color: AppColors.accent,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.textSecondary,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

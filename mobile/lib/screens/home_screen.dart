@@ -7,6 +7,7 @@ import '../models/meditation.dart';
 import '../services/api_service.dart';
 import '../services/music_service.dart';
 import '../services/notification_service.dart';
+import '../services/support_service.dart';
 import '../theme/colors.dart';
 import 'package:intl/intl.dart';
 
@@ -253,6 +254,17 @@ class _HomeScreenState extends State<HomeScreen> {
           onPressed: _loading ? null : () => context.push('/history'),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.support_outlined, size: 22),
+            color: AppColors.textSecondary,
+            tooltip: 'Contact support',
+            onPressed: _loading
+                ? null
+                : () => SupportService.open(
+                      context: context,
+                      subject: 'CraftedDay support',
+                    ),
+          ),
           IconButton(
             icon: const Icon(Icons.person_outline, size: 22),
             color: AppColors.textSecondary,

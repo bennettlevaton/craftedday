@@ -7,6 +7,7 @@ class ClerkService {
   ClerkService._();
 
   ClerkAuthState? _authState;
+  ClerkAuthState? get authState => _authState;
 
   void setAuthState(ClerkAuthState state) => _authState = state;
 

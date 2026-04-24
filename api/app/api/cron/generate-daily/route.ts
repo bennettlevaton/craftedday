@@ -1,30 +1,14 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { dailySessions, userProfiles } from "@/db/schema";
-import { enqueueJob, triggerWorker } from "@/lib/jobs";
+import { userProfiles } from "@/db/schema";
+import { triggerWorker } from "@/lib/jobs";
 import { isSubscribed } from "@/lib/subscription";
-import { getOrCreateProfile } from "@/lib/user";
+import { enqueueDailyForUser, todayPacific } from "@/lib/daily";
 import { log, logError } from "@/lib/log";
-import type { VoiceGender } from "@/lib/elevenlabs";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-const DEFAULT_DURATION = 600;
-
-// Pacific Time — cron fires at 8am UTC which is midnight PT, so "today PT" at that
-// moment is the day about to start. Must match /api/session/daily lookup timezone.
-function todayPacific(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
-}
-
-function dailyPrompt(profile: { primaryGoals: string[] | null; experienceLevel: string | null }): string {
-  const goals = profile.primaryGoals?.filter((g) => g !== "other") ?? [];
-  const focus = goals.length > 0 ? goals.join(" and ") : "general wellbeing";
-  const level = profile.experienceLevel ?? "intermediate";
-  return `A grounding meditation for a ${level} practitioner focused on ${focus}`;
-}
 
 export async function GET(req: NextRequest) {
   const secret = req.headers.get("authorization");
@@ -36,12 +20,7 @@ export async function GET(req: NextRequest) {
   log("cron:daily", "start", { date });
 
   const allUsers = await db
-    .select({
-      userId: userProfiles.userId,
-      experienceLevel: userProfiles.experienceLevel,
-      primaryGoals: userProfiles.primaryGoals,
-      voiceGender: userProfiles.voiceGender,
-    })
+    .select({ userId: userProfiles.userId })
     .from(userProfiles)
     .where(isNotNull(userProfiles.onboardedAt));
 
@@ -56,33 +35,9 @@ export async function GET(req: NextRequest) {
         // this so all users get enqueued during testing.
         if (!(await isSubscribed(user.userId))) { counts.unsubscribed++; return; }
 
-        const existing = await db
-          .select({ id: dailySessions.meditationId })
-          .from(dailySessions)
-          .where(and(eq(dailySessions.userId, user.userId), eq(dailySessions.date, date)))
-          .limit(1);
-        if (existing.length > 0) { counts.skipped++; return; }
-
-        const profile = await getOrCreateProfile(user.userId);
-        const voiceGender: VoiceGender = user.voiceGender === "male" ? "male" : "female";
-        const prompt = dailyPrompt(user);
-
-        await enqueueJob({
-          userId: user.userId,
-          prompt,
-          durationSeconds: DEFAULT_DURATION,
-          voiceGender,
-          profile: {
-            name: profile.name,
-            experienceLevel: profile.experienceLevel,
-            primaryGoals: profile.primaryGoals ?? [],
-            primaryGoalCustom: profile.primaryGoalCustom,
-            preferenceSummary: profile.preferenceSummary,
-          },
-          source: "cron",
-        });
-
-        counts.enqueued++;
+        const result = await enqueueDailyForUser(user.userId);
+        if (result.enqueued) counts.enqueued++;
+        else counts.skipped++;
       } catch (err) {
         counts.errors++;
         logError(`cron:daily:${user.userId}`, err);
@@ -92,7 +47,6 @@ export async function GET(req: NextRequest) {
 
   log("cron:daily", "enqueued", counts);
 
-  // Kick off the worker chain
   after(() => triggerWorker());
 
   return NextResponse.json(counts);

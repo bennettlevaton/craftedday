@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { userProfiles } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { logError } from "@/lib/log";
+import { log, logError } from "@/lib/log";
 import { getOrCreateProfile } from "@/lib/user";
 import { getUserId, isAuthError } from "@/lib/auth";
+import { grantWelcomeSession } from "@/lib/daily";
 
 export const runtime = "nodejs";
 
@@ -70,7 +71,9 @@ export async function POST(req: NextRequest) {
       primaryGoalCustom = customRaw;
     }
 
-    await getOrCreateProfile(userId);
+    const profile = await getOrCreateProfile(userId);
+    const isFirstOnboarding = profile.onboardedAt === null;
+
     await db
       .update(userProfiles)
       .set({
@@ -82,6 +85,20 @@ export async function POST(req: NextRequest) {
         updatedAt: new Date(),
       })
       .where(eq(userProfiles.userId, userId));
+
+    // Give brand-new users an instant-playable first session so they don't
+    // land on home to an empty daily card. Only runs when onboardedAt was
+    // null before this call — an existing user re-submitting onboarding
+    // (shouldn't happen via the app, but protect anyway) won't get another
+    // welcome. Failure is non-fatal — onboarding still succeeds.
+    if (isFirstOnboarding) {
+      try {
+        const result = await grantWelcomeSession(userId);
+        log("onboarding", "welcome grant", { userId, result });
+      } catch (err) {
+        logError("onboarding:welcome", err);
+      }
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

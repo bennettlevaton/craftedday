@@ -9,24 +9,24 @@ AI-powered personalized meditation app. User describes their current mood/situat
 ## 🚀 Launch Checklist
 
 ### 1. Apple Developer Account ($99/yr)
-- [ ] Enroll at developer.apple.com if not already
-- [ ] Create App ID (`com.craftedday.app`)
-- [ ] Enable "Sign In with Apple" capability on the App ID
-- [ ] Create a Service ID for Clerk Apple OAuth
-- [ ] Generate a Sign In with Apple Key (.p8 file)
+- [x] Enroll at developer.apple.com if not already
+- [x] Create App ID (`com.craftedday.craftedday`)
+- [x] Enable "Sign In with Apple" capability on the App ID
+- [x] Create a Service ID for Clerk Apple OAuth
+- [x] Generate a Sign In with Apple Key (.p8 file)
 - [ ] Create distribution provisioning profile
 - [ ] Create App Store Connect record for CraftedDay
 
 ### 2. Xcode
-- [ ] **Add "Sign In with Apple" capability** — Runner target → Signing & Capabilities → + Capability
-- [ ] Set bundle ID (`com.craftedday.app`)
-- [ ] Set team to Apple Developer account
+- [x] **Add "Sign In with Apple" capability** — Runner target → Signing & Capabilities → + Capability
+- [x] Set bundle ID (`com.craftedday.craftedday`)
+- [x] Set team to Apple Developer account
 - [ ] Set version + build number
 - [ ] Create distribution provisioning profile
 
 ### 3. Clerk Production
 - [x] Create production Clerk app (separate from current test app)
-- [ ] Configure Apple Sign In (Service ID + Team ID + Key ID + .p8)
+- [x] Configure Apple Sign In (Service ID + Team ID + Key ID + .p8)
 - [x] Configure Google Sign In (Google Cloud OAuth credentials)
 - [ ] Add `craftedday://oauth-callback` to allowed redirect URLs
 - [x] Swap all keys to `pk_live_` / `sk_live_` in Vercel + Flutter `.env`
@@ -36,7 +36,7 @@ AI-powered personalized meditation app. User describes their current mood/situat
 - [x] Set up RevenueCat account + project
 - [ ] Connect App Store Connect to RevenueCat (attach product to default offering)
 - [ ] Configure App Store Server Notifications → RC's ingest URL
-- [ ] Set RC webhook URL + `REVENUECAT_WEBHOOK_SECRET` in Vercel prod
+- [x] Set RC webhook URL + `REVENUECAT_WEBHOOK_SECRET` in Vercel prod
 - [x] Integrate RevenueCat Flutter SDK
 - [x] Backend (`subscriptions` + `usage_periods` tables) is source of truth — mobile reads `/api/usage`, RC SDK only used for identity/purchase/restore + optimistic post-purchase flip
 - [x] `SKIP_SUBSCRIPTION_CHECK=true` bypasses gating everywhere (generate, daily, cron, usage endpoint) for dev
@@ -55,7 +55,7 @@ AI-powered personalized meditation app. User describes their current mood/situat
 - [ ] Set `CRON_SECRET` to a strong random string (not `craftedday-cron-2026`)
 - [x] Wire `craftedday.com` custom domain
 - [x] Confirm all env vars set (Clerk live keys, etc.)
-- [ ] Verify cron runs at 5am UTC (`/api/cron/generate-daily`)
+- [x] Verify cron runs at 5am UTC (`/api/cron/generate-daily`)
 
 ### 7. Legal (required for App Store)
 - [x] **Privacy Policy** — host at `craftedday.com/privacy`. Must cover: data collected, Clerk auth, AI processing, ElevenLabs TTS. Tools: Termly, iubenda, or custom.

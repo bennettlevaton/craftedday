@@ -7,14 +7,18 @@ import { logError } from "@/lib/log";
 
 export const runtime = "nodejs";
 
-function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
+// US-centric app — use Pacific Time so the daily session stays "today" for all
+// US users until real midnight PT, rather than vanishing at 4–5pm PT when UTC flips.
+// Must match the cron's timezone in /api/cron/generate-daily or the session won't
+// be found.
+function todayPacific(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 }
 
 export async function GET(req: NextRequest) {
   try {
     const userId = await getUserId(req);
-    const date = todayUtc();
+    const date = todayPacific();
 
     const rows = await db
       .select({

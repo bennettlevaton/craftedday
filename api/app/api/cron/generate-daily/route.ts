@@ -12,8 +12,10 @@ export const maxDuration = 60;
 
 const DEFAULT_DURATION = 600;
 
-function todayEst(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+// Pacific Time — cron fires at 8am UTC which is midnight PT, so "today PT" at that
+// moment is the day about to start. Must match /api/session/daily lookup timezone.
+function todayPacific(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 }
 
 function dailyPrompt(profile: { primaryGoals: string[] | null; experienceLevel: string | null }): string {
@@ -29,7 +31,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const date = todayEst();
+  const date = todayPacific();
   log("cron:daily", "start", { date });
 
   const allUsers = await db

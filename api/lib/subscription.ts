@@ -51,6 +51,23 @@ export async function checkSubscriptionAndQuota(
   return { ok: true, minutesUsed, minutesLimit: limit, isTrial, periodEnd: sub.periodEnd };
 }
 
+// Lightweight check — does this user currently have access? Used by endpoints that
+// gate access but don't meter minutes (daily session, cron enqueue).
+export async function isSubscribed(clerkId: string): Promise<boolean> {
+  if (process.env.SKIP_SUBSCRIPTION_CHECK === "true") return true;
+
+  const [sub] = await db
+    .select({ status: subscriptions.status, periodEnd: subscriptions.periodEnd })
+    .from(subscriptions)
+    .where(eq(subscriptions.clerkId, clerkId))
+    .limit(1);
+
+  if (!sub) return false;
+  const now = new Date();
+  return (sub.status === "active" || sub.status === "cancelled") &&
+    (!sub.periodEnd || sub.periodEnd > now);
+}
+
 // Called only after successful R2 upload + DB save.
 export async function deductCustomMinutes(clerkId: string, minutes: number) {
   if (process.env.SKIP_SUBSCRIPTION_CHECK === "true") return;
@@ -93,7 +110,6 @@ export async function closeCurrentPeriod(clerkId: string, periodEnd: Date) {
 
 export async function upsertSubscription(data: {
   clerkId: string;
-  rcCustomerId: string;
   status: string;
   periodType: string;
   productId: string;
@@ -121,7 +137,6 @@ export async function upsertSubscription(data: {
   } else {
     await db.insert(subscriptions).values({
       clerkId: data.clerkId,
-      rcCustomerId: data.rcCustomerId,
       status: data.status,
       periodType: data.periodType,
       productId: data.productId,

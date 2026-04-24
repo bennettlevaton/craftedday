@@ -31,8 +31,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // app_user_id is the current ID (Clerk ID after login).
-  // original_app_user_id is the first ID ever assigned (anonymous before login).
+  // app_user_id is the current RC identifier. Since Purchases.logIn(clerkId) is
+  // called before any purchase, this equals the Clerk ID.
   const clerkId = event.app_user_id;
   const periodStart = new Date(event.purchased_at_ms);
   const periodEnd = event.expiration_at_ms ? new Date(event.expiration_at_ms) : null;
@@ -45,7 +45,6 @@ export async function POST(req: NextRequest) {
       case "INITIAL_PURCHASE":
         await upsertSubscription({
           clerkId,
-          rcCustomerId: event.app_user_id,
           status: "active",
           periodType,
           productId: event.product_id,
@@ -60,7 +59,6 @@ export async function POST(req: NextRequest) {
         await closeCurrentPeriod(clerkId, periodStart);
         await upsertSubscription({
           clerkId,
-          rcCustomerId: event.app_user_id,
           status: "active",
           periodType,
           productId: event.product_id,

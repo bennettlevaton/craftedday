@@ -97,6 +97,15 @@ class ApiService {
     ),
   )..interceptors.add(_AuthInterceptor());
 
+  static String _clientNowIso() {
+    final now = DateTime.now();
+    final off = now.timeZoneOffset;
+    final sign = off.isNegative ? '-' : '+';
+    final h = off.inHours.abs().toString().padLeft(2, '0');
+    final m = (off.inMinutes.abs() % 60).toString().padLeft(2, '0');
+    return '${now.toIso8601String()}$sign$h:$m';
+  }
+
   Future<String> enqueueMeditation({
     required String prompt,
     required int durationSeconds,
@@ -104,7 +113,11 @@ class ApiService {
     try {
       final res = await _dio.post(
         '/api/meditation/generate',
-        data: {'prompt': prompt, 'duration': durationSeconds},
+        data: {
+          'prompt': prompt,
+          'duration': durationSeconds,
+          'clientNow': _clientNowIso(),
+        },
       );
       return (res.data as Map<String, dynamic>)['jobId'] as String;
     } on DioException catch (e) {

@@ -24,7 +24,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
       _package == null || _package!.storeProduct.introductoryPrice != null;
 
   String get _priceString =>
-      _package?.storeProduct.priceString ?? '\$24.99';
+      _package?.storeProduct.priceString ?? '\$19.99';
 
   @override
   void initState() {
@@ -158,7 +158,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 'A fresh 10-min session crafted for you every morning',
                 '150 min/month of custom sessions, any time',
                 'AI that learns and adapts to what works for you',
-                'Your full session history, forever',
               ].map((line) => Padding(
                     padding: const EdgeInsets.only(bottom: 14),
                     child: Row(

@@ -53,7 +53,8 @@ class _GateScreenState extends State<GateScreen> {
       return;
     }
 
-    // Login to RevenueCat — must await so isPremium is accurate before routing.
+    // login() identifies the user to RC and pulls sub state from our backend
+    // (source of truth). Must await so isPremium is accurate before routing.
     await SubscriptionService.instance.login(authState.user!.id);
 
     // Non-subscribers go straight to the gated paywall.

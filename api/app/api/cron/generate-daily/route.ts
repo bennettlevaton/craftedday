@@ -3,6 +3,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { dailySessions, userProfiles } from "@/db/schema";
 import { enqueueJob, triggerWorker } from "@/lib/jobs";
+import { isSubscribed } from "@/lib/subscription";
 import { getOrCreateProfile } from "@/lib/user";
 import { log, logError } from "@/lib/log";
 import type { VoiceGender } from "@/lib/elevenlabs";
@@ -46,11 +47,15 @@ export async function GET(req: NextRequest) {
 
   log("cron:daily", "users to process", { count: allUsers.length });
 
-  const counts = { enqueued: 0, skipped: 0, errors: 0 };
+  const counts = { enqueued: 0, skipped: 0, unsubscribed: 0, errors: 0 };
 
   await Promise.all(
     allUsers.map(async (user) => {
       try {
+        // Daily session is a subscriber perk. SKIP_SUBSCRIPTION_CHECK=true bypasses
+        // this so all users get enqueued during testing.
+        if (!(await isSubscribed(user.userId))) { counts.unsubscribed++; return; }
+
         const existing = await db
           .select({ id: dailySessions.meditationId })
           .from(dailySessions)

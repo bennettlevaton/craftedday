@@ -11,6 +11,18 @@ export async function GET(req: NextRequest) {
   try {
     const userId = await getUserId(req);
 
+    if (process.env.SKIP_SUBSCRIPTION_CHECK === "true") {
+      return NextResponse.json({
+        subscribed: true,
+        status: "active",
+        isTrial: false,
+        minutesUsed: 0,
+        minutesLimit: CUSTOM_MINUTES_LIMIT,
+        periodStart: null,
+        periodEnd: null,
+      });
+    }
+
     const [sub] = await db
       .select()
       .from(subscriptions)

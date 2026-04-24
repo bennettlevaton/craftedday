@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { dailySessions, meditations } from "@/db/schema";
 import { getUserId, isAuthError } from "@/lib/auth";
+import { isSubscribed } from "@/lib/subscription";
 import { logError } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -18,6 +19,12 @@ function todayPacific(): string {
 export async function GET(req: NextRequest) {
   try {
     const userId = await getUserId(req);
+
+    // Daily session is a subscriber perk. No quota — just gated on sub status.
+    if (!(await isSubscribed(userId))) {
+      return NextResponse.json({ session: null });
+    }
+
     const date = todayPacific();
 
     const rows = await db

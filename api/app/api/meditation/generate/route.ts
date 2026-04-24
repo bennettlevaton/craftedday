@@ -13,7 +13,26 @@ export const maxDuration = 30;
 type Body = {
   prompt?: string;
   duration?: number;
+  clientNow?: string;
 };
+
+// Read the client's wall-clock hour straight from the ISO string (e.g. "2026-04-24T14:30:00.000-07:00").
+// Parsing into a Date would collapse to UTC and lose the sender's local view. The "HH" after "T" is
+// already the client's local hour regardless of offset.
+function hourFromClientIso(iso: string | undefined): number | null {
+  if (!iso) return null;
+  const m = /T(\d{2}):/.exec(iso);
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  return Number.isFinite(h) && h >= 0 && h <= 23 ? h : null;
+}
+
+function hourToTimeOfDay(hour: number): string {
+  return hour < 5 ? "late night"
+    : hour < 12 ? "morning"
+    : hour < 17 ? "afternoon"
+    : hour < 21 ? "evening" : "night";
+}
 
 const MIN_DURATION = 30;
 const MAX_DURATION = 600;

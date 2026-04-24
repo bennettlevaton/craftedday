@@ -26,7 +26,6 @@ export const dailySessions = pgTable("daily_sessions", {
 // One row per user. Updated by RevenueCat webhooks.
 export const subscriptions = pgTable("subscriptions", {
   clerkId:     varchar("clerk_id", { length: 128 }).primaryKey(),
-  rcCustomerId: varchar("rc_customer_id", { length: 128 }),
   status:      varchar("status", { length: 32 }).notNull().default("inactive"), // active | cancelled | expired | inactive
   periodType:  varchar("period_type", { length: 16 }).notNull().default("NORMAL"), // TRIAL | NORMAL
   productId:   varchar("product_id", { length: 128 }),

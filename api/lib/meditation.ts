@@ -382,8 +382,8 @@ export async function generateScript(
   const started = Date.now();
   const listenerBlock = buildListenerContextBlock(listenerContext);
 
-  const timeOfDay = "timeOfDay" in options
-    ? options.timeOfDay ?? null
+  const timeOfDay = options.timeOfDay !== undefined
+    ? options.timeOfDay
     : (() => {
         const hour = new Date().getHours();
         return hour < 5 ? "late night"
@@ -593,7 +593,10 @@ const PCM_BYTE_RATE = PCM_SAMPLE_RATE * 2; // 16-bit mono
 
 // Produce N seconds of silent 16-bit PCM at PCM_SAMPLE_RATE. Silence = all-zero bytes.
 function silencePcm(seconds: number): Buffer {
-  const bytes = Math.max(0, Math.round(seconds * PCM_BYTE_RATE));
+  // Must be even — 16-bit samples are 2 bytes. An odd byte count shifts every
+  // subsequent sample by a byte and manifests as continuous static.
+  const raw = Math.max(0, Math.round(seconds * PCM_BYTE_RATE));
+  const bytes = raw - (raw % 2);
   return Buffer.alloc(bytes);
 }
 
@@ -691,7 +694,8 @@ export async function generateAudio(
       );
       const actualSec = pcm.length / PCM_BYTE_RATE;
       if (actualSec > maxSec) {
-        const truncated = pcm.subarray(0, Math.round(maxSec * PCM_BYTE_RATE));
+        const cap = Math.round(maxSec * PCM_BYTE_RATE);
+        const truncated = pcm.subarray(0, cap - (cap % 2));
         log("elevenlabs", "chunk duration exceeded safety cap, truncating", {
           chunkIndex: idx,
           textChars: chunk.text.length,

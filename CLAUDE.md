@@ -301,6 +301,10 @@ Current focus: `POST /api/meditation/generate` — the core loop.
 - [x] Preference summary: Claude Sonnet distills all rated sessions, cached on profile, refreshed fire-and-forget from /rate
 - [x] Listener context (name, experience, goal, preference summary) injected into generate system prompt
 
+**Tech debt to revisit:**
+- **Stats recompute is O(n) per fetch.** `GET /api/stats` pulls every row in `meditations` for the user and recomputes streak / hours / favorite time on every call. Fine at current scale; at some point denormalize onto `user_profiles` (current_streak, total_sessions, total_seconds, last_session_at) and maintain on write from `/generate` and `/rate`.
+- **RevenueCat webhook has no event-ID dedupe.** `openNewPeriod` is now idempotent on `(clerkId, periodStart)` and self-heals lingering open rows, but we're not persisting `event.id` anywhere. If RC ever starts sending two different events with the same `purchased_at_ms` (shouldn't happen, but), we'd collapse them. Long term: add a `webhook_events` table keyed on RC event id.
+
 **Explicitly deferred:**
 - Auth (using hardcoded test user for now)
 - Feedback history in Claude prompt (no ratings yet)

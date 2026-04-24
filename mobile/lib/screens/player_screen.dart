@@ -33,6 +33,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   StreamSubscription<PlayerState>? _stateSub;
   bool _dragging = false;
   double _dragValue = 0;
+  bool _loadFailed = false;
+  bool _retrying = false;
 
   @override
   void initState() {
@@ -65,21 +67,30 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   Future<void> _load() async {
+    if (mounted) {
+      setState(() {
+        _loadFailed = false;
+        _retrying = true;
+      });
+    }
     try {
       await _player.setUrl(widget.audioUrl);
       await _player.setVolume(1.0);
       if (!MusicService.instance.isPlaying) {
         MusicService.instance.start();
       }
+      if (mounted) setState(() => _retrying = false);
       // Brief pause before voice starts — lets listeners settle in.
       await Future.delayed(const Duration(seconds: 3));
       if (!mounted) return;
       await _player.play();
-    } catch (e) {
+    } catch (_) {
+      MusicService.instance.stop();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load audio. ${e.toString()}')),
-      );
+      setState(() {
+        _loadFailed = true;
+        _retrying = false;
+      });
     }
   }
 
@@ -107,7 +118,9 @@ class _PlayerScreenState extends State<PlayerScreen>
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 28),
-          child: Column(
+          child: _loadFailed
+              ? _ErrorView(retrying: _retrying, onRetry: _load)
+              : Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const Spacer(flex: 2),
@@ -301,6 +314,59 @@ class _PlayerScreenState extends State<PlayerScreen>
     final m = d.inMinutes.toString().padLeft(1, '0');
     final s = (d.inSeconds % 60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+}
+
+class _ErrorView extends StatelessWidget {
+  final bool retrying;
+  final VoidCallback onRetry;
+  const _ErrorView({required this.retrying, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const Spacer(flex: 2),
+        Icon(
+          Icons.cloud_off_rounded,
+          size: 48,
+          color: AppColors.textSecondary.withValues(alpha: 0.6),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          "Couldn't load session",
+          style: textTheme.headlineMedium,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Check your connection and try again.',
+          style: textTheme.bodyMedium?.copyWith(
+            color: AppColors.textSecondary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const Spacer(flex: 3),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: retrying ? null : onRetry,
+            child: retrying
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.surface,
+                    ),
+                  )
+                : const Text('Retry'),
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
   }
 }
 

@@ -150,17 +150,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 32),
             _SectionLabel(text: 'Stats'),
             const SizedBox(height: 4),
-            if (_loading)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(
-                  child: CircularProgressIndicator(
-                    color: AppColors.accent,
-                    strokeWidth: 2,
-                  ),
-                ),
-              )
-            else ...[
+            if (_loading) ...[
+              const _StatRowSkeleton(labelWidth: 110, valueWidth: 60),
+              const _StatRowSkeleton(labelWidth: 120, valueWidth: 30),
+              const _StatRowSkeleton(labelWidth: 130, valueWidth: 40),
+              const _StatRowSkeleton(labelWidth: 100, valueWidth: 70),
+            ] else ...[
               _StatRow(
                 label: 'Current streak',
                 value: stats == null
@@ -372,6 +367,47 @@ class _SectionLabel extends StatelessWidget {
             fontSize: 12,
             fontWeight: FontWeight.w500,
           ),
+    );
+  }
+}
+
+class _StatRowSkeleton extends StatelessWidget {
+  final double labelWidth;
+  final double valueWidth;
+  const _StatRowSkeleton({
+    required this.labelWidth,
+    required this.valueWidth,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _SkeletonBar(width: labelWidth, height: 14),
+          _SkeletonBar(width: valueWidth, height: 16),
+        ],
+      ),
+    );
+  }
+}
+
+class _SkeletonBar extends StatelessWidget {
+  final double width;
+  final double height;
+  const _SkeletonBar({required this.width, required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: AppColors.divider.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(6),
+      ),
     );
   }
 }

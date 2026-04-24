@@ -61,6 +61,22 @@ export async function deductCustomMinutes(clerkId: string, minutes: number) {
 }
 
 export async function openNewPeriod(clerkId: string, periodStart: Date) {
+  // Idempotent: if a period with this exact start already exists, do nothing.
+  // Guards against RevenueCat webhook replays for the same RENEWAL/INITIAL_PURCHASE.
+  const [existing] = await db
+    .select({ id: usagePeriods.id })
+    .from(usagePeriods)
+    .where(and(eq(usagePeriods.clerkId, clerkId), eq(usagePeriods.periodStart, periodStart)))
+    .limit(1);
+  if (existing) return;
+
+  // Close any lingering open row(s) before opening a new one — invariant: at most
+  // one open period per user. Orphans can arise from missed EXPIRATION webhooks.
+  await db
+    .update(usagePeriods)
+    .set({ periodEnd: periodStart })
+    .where(and(eq(usagePeriods.clerkId, clerkId), isNull(usagePeriods.periodEnd)));
+
   await db.insert(usagePeriods).values({
     id: randomUUID(),
     clerkId,

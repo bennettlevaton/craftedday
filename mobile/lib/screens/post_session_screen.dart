@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import '../models/meditation.dart';
 import '../services/api_service.dart';
 import '../theme/colors.dart';
 
@@ -16,6 +18,8 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
   String? _feeling;
   String? _whatHelped;
   bool _submitting = false;
+  bool _submitted = false;
+  UserStats? _statsAfter;
 
   @override
   void dispose() {
@@ -35,8 +39,19 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
             ? null
             : _notesController.text.trim(),
       );
+      UserStats? stats;
+      try {
+        stats = await apiService.getStats();
+      } catch (_) {
+        // Celebration still works without stats.
+      }
       if (!mounted) return;
-      context.go('/home');
+      HapticFeedback.mediumImpact();
+      setState(() {
+        _submitting = false;
+        _submitted = true;
+        _statsAfter = stats;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);
@@ -49,6 +64,10 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+
+    if (_submitted) {
+      return _CelebrationView(stats: _statsAfter);
+    }
 
     return Scaffold(
       body: SafeArea(
@@ -136,17 +155,72 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
                       : const Text('Done'),
                 ),
               ),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: _submitting ? null : () => context.go('/home'),
-                child: Text(
-                  'Skip',
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: AppColors.textSecondary,
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CelebrationView extends StatelessWidget {
+  final UserStats? stats;
+  const _CelebrationView({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final streak = stats?.streak ?? 0;
+    final streakLine = streak >= 1
+        ? (streak == 1 ? '1 day streak' : '$streak day streak')
+        : null;
+
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Spacer(flex: 2),
+              Text('Well done.', style: textTheme.displayLarge),
+              const SizedBox(height: 16),
+              if (streakLine != null) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(100),
+                  ),
+                  child: Text(
+                    streakLine,
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: AppColors.accent,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
+                const SizedBox(height: 20),
+              ],
+              Text(
+                'See you tomorrow.',
+                style: textTheme.bodyLarge?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               ),
-              const SizedBox(height: 12),
+              const Spacer(flex: 3),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => context.go('/home'),
+                  child: const Text('Continue'),
+                ),
+              ),
+              const SizedBox(height: 24),
             ],
           ),
         ),

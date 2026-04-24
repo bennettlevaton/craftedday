@@ -16,6 +16,7 @@ class _HistoryScreenState extends State<HistoryScreen>
   late final TabController _tabs;
   late Future<List<Meditation>> _historyFuture;
   late Future<List<Meditation>> _favoritesFuture;
+  UserStats? _stats;
 
   @override
   void initState() {
@@ -23,12 +24,22 @@ class _HistoryScreenState extends State<HistoryScreen>
     _tabs = TabController(length: 2, vsync: this);
     _historyFuture = apiService.getHistory();
     _favoritesFuture = apiService.getFavorites();
+    _loadStats();
     // Refresh favorites list when switching to that tab
     _tabs.addListener(() {
       if (_tabs.index == 1 && !_tabs.indexIsChanging) {
         setState(() { _favoritesFuture = apiService.getFavorites(); });
       }
     });
+  }
+
+  Future<void> _loadStats() async {
+    try {
+      final stats = await apiService.getStats();
+      if (mounted) setState(() => _stats = stats);
+    } catch (_) {
+      // Nudge just won't show.
+    }
   }
 
   @override
@@ -67,6 +78,7 @@ class _HistoryScreenState extends State<HistoryScreen>
           _SessionList(
             future: _historyFuture,
             emptyText: 'Your sessions will appear here',
+            nudge: _nudgeCopy(_stats),
             onRefresh: () { setState(() { _historyFuture = apiService.getHistory(); }); },
           ),
           _SessionList(
@@ -83,12 +95,14 @@ class _HistoryScreenState extends State<HistoryScreen>
 class _SessionList extends StatelessWidget {
   final Future<List<Meditation>> future;
   final String emptyText;
+  final String? nudge;
   final VoidCallback onRefresh;
 
   const _SessionList({
     required this.future,
     required this.emptyText,
     required this.onRefresh,
+    this.nudge,
   });
 
   @override
@@ -111,18 +125,78 @@ class _SessionList extends StatelessWidget {
         if (sessions.isEmpty) {
           return _EmptyState(icon: Icons.air, text: emptyText);
         }
+        final showNudge = nudge != null;
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(28, 20, 28, 20),
-          itemCount: sessions.length,
+          itemCount: sessions.length + (showNudge ? 1 : 0),
           separatorBuilder: (_, _) => const SizedBox(height: 12),
-          itemBuilder: (_, i) => _SessionCard(
-            session: sessions[i],
-            onRefresh: onRefresh,
-          ),
+          itemBuilder: (_, i) {
+            if (showNudge && i == 0) return _NudgeCard(text: nudge!);
+            final idx = showNudge ? i - 1 : i;
+            return _SessionCard(
+              session: sessions[idx],
+              onRefresh: onRefresh,
+            );
+          },
         );
       },
     );
   }
+}
+
+class _NudgeCard extends StatelessWidget {
+  final String text;
+  const _NudgeCard({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.local_fire_department_rounded,
+            size: 18,
+            color: AppColors.accent,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: textTheme.bodyMedium?.copyWith(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String? _nudgeCopy(UserStats? stats) {
+  if (stats == null) return null;
+  if (stats.totalSessions == 0) return 'Your first session starts your streak.';
+  if (stats.streak == 0) {
+    return 'Return today to start a new streak.';
+  }
+  if (stats.streak == 1) {
+    return 'One more session tomorrow for a 2-day streak.';
+  }
+  if (stats.streak < 7) {
+    final remaining = 7 - stats.streak;
+    return remaining == 1
+        ? 'One more day for a full week.'
+        : '$remaining more days for a full week.';
+  }
+  return null;
 }
 
 class _EmptyState extends StatelessWidget {

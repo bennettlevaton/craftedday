@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
         prompt: meditations.prompt,
         audioUrl: meditations.audioUrl,
         duration: meditations.duration,
+        feeling: meditations.feeling,
       })
       .from(dailySessions)
       .innerJoin(

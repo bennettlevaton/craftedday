@@ -100,7 +100,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
       try {
         final me = await apiService.getMe();
         if (!mounted) return;
-        context.go(me.needsOnboarding ? '/onboarding' : '/home');
+        context.go(me.needsOnboarding ? '/welcome' : '/home');
       } catch (_) {
         if (mounted) context.go('/home');
       }

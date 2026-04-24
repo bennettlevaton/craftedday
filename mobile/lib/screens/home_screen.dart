@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/meditation.dart';
 import '../services/api_service.dart';
 import '../services/music_service.dart';
 import '../services/notification_service.dart';
@@ -24,8 +26,12 @@ class _HomeScreenState extends State<HomeScreen> {
   final _controller = TextEditingController();
   bool _loading = false;
   String? _name;
+  List<String> _goals = const [];
   int _durationSeconds = 600;
   Map<String, dynamic>? _dailySession; // 10 min default
+  UserStats? _stats;
+  Timer? _abandonTimer;
+  bool _abandoned = false;
 
   @override
   void initState() {
@@ -33,7 +39,17 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadName();
     _loadDuration();
     _loadDailySession();
+    _loadStats();
     _setupNotifications();
+  }
+
+  Future<void> _loadStats() async {
+    try {
+      final stats = await apiService.getStats();
+      if (mounted) setState(() => _stats = stats);
+    } catch (_) {
+      // Non-critical — streak just won't show.
+    }
   }
 
   Future<void> _setupNotifications() async {
@@ -80,7 +96,10 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final me = await apiService.getMe();
       if (!mounted) return;
-      setState(() => _name = me.name);
+      setState(() {
+        _name = me.name;
+        _goals = me.primaryGoals;
+      });
     } catch (_) {
       // No greeting by name; not critical.
     }
@@ -88,24 +107,44 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _abandonTimer?.cancel();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _abandonLoading() {
+    if (!_loading || _abandoned) return;
+    _abandoned = true;
+    _abandonTimer?.cancel();
+    MusicService.instance.stop();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          "Still crafting — it'll appear in History when it's ready.",
+        ),
+      ),
+    );
+    setState(() => _loading = false);
   }
 
   Future<void> _generate() async {
     final prompt = _controller.text.trim();
     if (prompt.isEmpty || _loading) return;
 
+    _abandoned = false;
     setState(() => _loading = true);
     _controller.clear();
     MusicService.instance.start();
+    _abandonTimer?.cancel();
+    _abandonTimer = Timer(const Duration(seconds: 90), _abandonLoading);
     try {
       final jobId = await apiService.enqueueMeditation(
         prompt: prompt,
         durationSeconds: _durationSeconds,
       );
+      if (!mounted || _abandoned) return;
       final result = await apiService.pollJobUntilDone(jobId);
-      if (!mounted) return;
+      if (!mounted || _abandoned) return;
       context.push(
         '/player?audioUrl=${Uri.encodeComponent(result.audioUrl)}'
         '&id=${result.id}'
@@ -113,26 +152,27 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } on QuotaExceededException catch (e) {
       MusicService.instance.stop();
-      if (!mounted) return;
+      if (!mounted || _abandoned) return;
       _showQuotaSheet(e);
     } on NotSubscribedException catch (_) {
       MusicService.instance.stop();
-      if (!mounted) return;
+      if (!mounted || _abandoned) return;
       context.push('/paywall');
     } on MeditationFailedException catch (_) {
       MusicService.instance.stop();
-      if (!mounted) return;
+      if (!mounted || _abandoned) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Something went wrong generating your session. Please try again.')),
       );
     } catch (e) {
       MusicService.instance.stop();
-      if (!mounted) return;
+      if (!mounted || _abandoned) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Something went wrong. ${e.toString()}')),
       );
     } finally {
-      if (mounted) setState(() => _loading = false);
+      _abandonTimer?.cancel();
+      if (mounted && !_abandoned) setState(() => _loading = false);
     }
   }
 
@@ -222,7 +262,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: _loading
-          ? const _LoadingOverlay()
+          ? _LoadingOverlay(onDismiss: _abandonLoading)
           : SafeArea(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -233,16 +273,30 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                   const SizedBox(height: 40),
-                  if (_dailySession != null) ...[
-                    _DailySessionCard(onTap: _startDailySession),
+                  if (_dailySession != null &&
+                      _dailySession!['feeling'] == null) ...[
+                    _DailySessionCard(
+                      onTap: _startDailySession,
+                      durationSeconds:
+                          (_dailySession!['duration'] as int?) ?? 600,
+                      theme: _themeLabel(_goals),
+                    ),
                     const SizedBox(height: 28),
                   ],
-                  Text(
-                    _name == null ? greeting : '$greeting, $_name',
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textSecondary,
-                      fontSize: 15,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _name == null ? greeting : '$greeting, $_name',
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: AppColors.textSecondary,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                      if (_stats != null && _stats!.streak >= 1)
+                        _StreakChip(streak: _stats!.streak),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -259,8 +313,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     enabled: !_loading,
                     style: textTheme.bodyLarge,
                     textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(
-                      hintText: 'Share what\'s on your mind...',
+                    decoration: InputDecoration(
+                      hintText: _hintForGoals(_goals),
                       counterText: '',
                     ),
                     textInputAction: TextInputAction.newline,
@@ -342,13 +396,82 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _DailySessionCard extends StatelessWidget {
-  final VoidCallback onTap;
-  const _DailySessionCard({required this.onTap});
+String _hintForGoals(List<String> goals) {
+  final primary = goals.isEmpty ? null : goals.first;
+  return switch (primary) {
+    'stress' => 'Something stressing you out?',
+    'sleep' => 'Hard time winding down?',
+    'focus' => 'Need to settle and focus?',
+    'anxiety' => 'Feeling anxious? Start here.',
+    'general' => 'What\'s on your mind?',
+    _ => 'Share what\'s on your mind...',
+  };
+}
+
+String? _themeLabel(List<String> goals) {
+  final primary = goals.isEmpty ? null : goals.first;
+  return switch (primary) {
+    'stress' => 'Stress',
+    'sleep' => 'Sleep',
+    'focus' => 'Focus',
+    'anxiety' => 'Anxiety',
+    'general' => null,
+    _ => null,
+  };
+}
+
+class _StreakChip extends StatelessWidget {
+  final int streak;
+  const _StreakChip({required this.streak});
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final label = streak == 1 ? '1 day' : '$streak days';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(100),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.local_fire_department_rounded,
+            size: 14,
+            color: AppColors.accent,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: textTheme.bodyMedium?.copyWith(
+              color: AppColors.accent,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DailySessionCard extends StatelessWidget {
+  final VoidCallback onTap;
+  final int durationSeconds;
+  final String? theme;
+  const _DailySessionCard({
+    required this.onTap,
+    required this.durationSeconds,
+    this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final minutes = (durationSeconds / 60).round();
+    final subtitle = theme == null ? '$minutes min' : '$minutes min · $theme';
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -367,12 +490,12 @@ class _DailySessionCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Your session is ready',
+                    'Today\'s meditation',
                     style: textTheme.headlineMedium?.copyWith(fontSize: 16),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'A session crafted for you today',
+                    subtitle,
                     style: textTheme.bodyMedium,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -459,7 +582,8 @@ class _DurationSheet extends StatelessWidget {
 }
 
 class _LoadingOverlay extends StatefulWidget {
-  const _LoadingOverlay();
+  final VoidCallback onDismiss;
+  const _LoadingOverlay({required this.onDismiss});
 
   @override
   State<_LoadingOverlay> createState() => _LoadingOverlayState();
@@ -564,7 +688,17 @@ class _LoadingOverlayState extends State<_LoadingOverlay>
     return Container(
       color: AppColors.background,
       child: SafeArea(
-        child: Column(
+        child: Stack(
+          children: [
+            Align(
+              alignment: Alignment.topRight,
+              child: IconButton(
+                icon: const Icon(Icons.close_rounded, size: 22),
+                color: AppColors.textSecondary,
+                onPressed: widget.onDismiss,
+              ),
+            ),
+            Column(
           children: [
             const Spacer(flex: 2),
             AnimatedBuilder(
@@ -617,6 +751,8 @@ class _LoadingOverlayState extends State<_LoadingOverlay>
               ),
             ),
             const Spacer(flex: 3),
+          ],
+            ),
           ],
         ),
       ),

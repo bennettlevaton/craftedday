@@ -66,7 +66,7 @@ class _GateScreenState extends State<GateScreen> {
     try {
       final me = await apiService.getMe();
       if (!mounted) return;
-      context.go(me.needsOnboarding ? '/onboarding' : '/home');
+      context.go(me.needsOnboarding ? '/welcome' : '/home');
     } on DioException catch (e) {
       if (!mounted) return;
       // 401 = token invalid → back to sign-in

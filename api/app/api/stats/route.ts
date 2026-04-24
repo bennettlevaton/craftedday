@@ -41,25 +41,53 @@ export async function GET(req: NextRequest) {
   }
 }
 
+const PT_TZ = "America/Los_Angeles";
+
+function ptDateKey(d: Date): string {
+  // en-CA locale → YYYY-MM-DD
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: PT_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+function ptHour(d: Date): number {
+  return parseInt(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: PT_TZ,
+      hour: "2-digit",
+      hour12: false,
+    }).format(d),
+    10,
+  );
+}
+
+function prevDayKey(key: string): string {
+  // key is YYYY-MM-DD at PT midnight; subtract one day in UTC space is safe here
+  // because we're just iterating calendar dates, not wall clocks.
+  const [y, m, d] = key.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - 1);
+  return dt.toISOString().slice(0, 10);
+}
+
 function computeStreak(dates: Date[]): number {
   if (dates.length === 0) return 0;
-  const dayKeys = new Set(
-    dates.map((d) => new Date(d).toISOString().slice(0, 10)),
-  );
+  const dayKeys = new Set(dates.map(ptDateKey));
 
   let streak = 0;
-  const cursor = new Date();
-  cursor.setHours(0, 0, 0, 0);
+  let cursor = ptDateKey(new Date());
 
-  // If no session today, allow streak from yesterday
-  const todayKey = cursor.toISOString().slice(0, 10);
-  if (!dayKeys.has(todayKey)) {
-    cursor.setDate(cursor.getDate() - 1);
+  // If no session today (PT), allow streak from yesterday
+  if (!dayKeys.has(cursor)) {
+    cursor = prevDayKey(cursor);
   }
 
-  while (dayKeys.has(cursor.toISOString().slice(0, 10))) {
+  while (dayKeys.has(cursor)) {
     streak++;
-    cursor.setDate(cursor.getDate() - 1);
+    cursor = prevDayKey(cursor);
   }
   return streak;
 }
@@ -68,7 +96,7 @@ function computeFavoriteTime(dates: Date[]): string {
   if (dates.length === 0) return "—";
   const buckets = { Morning: 0, Afternoon: 0, Evening: 0 };
   for (const d of dates) {
-    const h = new Date(d).getHours();
+    const h = ptHour(d);
     if (h < 12) buckets.Morning++;
     else if (h < 18) buckets.Afternoon++;
     else buckets.Evening++;

@@ -1,12 +1,39 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:clerk_auth/clerk_auth.dart' as clerk;
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:uuid/uuid.dart';
 import '../theme/colors.dart';
 
-class SignInScreen extends StatelessWidget {
+class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
+
+  @override
+  State<SignInScreen> createState() => _SignInScreenState();
+}
+
+class _SignInScreenState extends State<SignInScreen> {
+  StreamSubscription<clerk.ClerkError>? _errorSub;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _errorSub ??= ClerkAuth.errorStreamOf(context).listen((err) {
+      // ignore: avoid_print
+      print('CLERK_ERROR: code=${err.code} message=${err.message} '
+          'argument=${err.argument} errors=${err.errors?.errorMessage}');
+    });
+  }
+
+  @override
+  void dispose() {
+    _errorSub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,6 +78,7 @@ class SignInScreen extends StatelessWidget {
                       try {
                         final credential =
                             await SignInWithApple.getAppleIDCredential(
+                          nonce: const Uuid().v4(),
                           scopes: [
                             AppleIDAuthorizationScopes.email,
                             AppleIDAuthorizationScopes.fullName,
@@ -58,15 +86,54 @@ class SignInScreen extends StatelessWidget {
                         );
                         final idToken = credential.identityToken;
                         if (idToken == null || !context.mounted) return;
+                        final givenName = credential.givenName ?? 'Given';
+                        final familyName = credential.familyName ?? 'Family';
+                        final parts = idToken.split('.');
+                        if (parts.length == 3) {
+                          try {
+                            final payload = utf8.decode(base64Url
+                                .decode(base64Url.normalize(parts[1])));
+                            // ignore: avoid_print
+                            print('APPLE_ID_TOKEN_PAYLOAD: $payload');
+                          } catch (e) {
+                            // ignore: avoid_print
+                            print('APPLE_ID_TOKEN_DECODE_ERROR: $e');
+                          }
+                        }
                         await authState.idTokenSignIn(
                           provider: clerk.IdTokenProvider.apple,
-                          idToken: idToken,
+                          token: idToken,
                         );
+                        // If Clerk wants missing fields filled in for sign-up,
+                        // complete them now.
+                        if (authState.signUp case final signUp?
+                            when signUp.missingFields.isNotEmpty) {
+                          final legalAccepted =
+                              signUp.missing(clerk.Field.legalAccepted)
+                                  ? true
+                                  : null;
+                          final firstName =
+                              signUp.missing(clerk.Field.firstName)
+                                  ? givenName
+                                  : null;
+                          final lastName = signUp.missing(clerk.Field.lastName)
+                              ? familyName
+                              : null;
+                          await authState.attemptSignUp(
+                            legalAccepted: legalAccepted,
+                            firstName: firstName,
+                            lastName: lastName,
+                          );
+                        }
                         if (context.mounted) context.go('/');
-                      } catch (_) {
+                      } catch (e, st) {
+                        // ignore: avoid_print
+                        print('APPLE_SIGNIN_ERROR: $e');
+                        // ignore: avoid_print
+                        print('APPLE_SIGNIN_STACK: $st');
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("We couldn't sign you in. Please try again.")),
+                          SnackBar(content: Text("Apple sign-in failed: $e")),
                         );
                       }
                     },

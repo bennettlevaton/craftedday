@@ -12,8 +12,13 @@ class ClerkService {
   void setAuthState(ClerkAuthState state) => _authState = state;
 
   Future<String?> getToken() async {
-    final token = await _authState?.sessionToken();
-    return token?.jwt;
+    if (_authState?.user == null) return null;
+    try {
+      final token = await _authState!.sessionToken();
+      return token?.jwt;
+    } catch (_) {
+      return null;
+    }
   }
 
   bool get isSignedIn => _authState?.user != null;

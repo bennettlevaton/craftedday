@@ -14,28 +14,28 @@ AI-powered personalized meditation app. User describes their current mood/situat
 - [x] Enable "Sign In with Apple" capability on the App ID
 - [x] Create a Service ID for Clerk Apple OAuth
 - [x] Generate a Sign In with Apple Key (.p8 file)
-- [ ] Create distribution provisioning profile
-- [ ] Create App Store Connect record for CraftedDay
+- [x] Create distribution provisioning profile
+- [] Create App Store Connect record for CraftedDay
 
 ### 2. Xcode
 - [x] **Add "Sign In with Apple" capability** — Runner target → Signing & Capabilities → + Capability
 - [x] Set bundle ID (`com.craftedday.craftedday`)
 - [x] Set team to Apple Developer account
-- [ ] Set version + build number
-- [ ] Create distribution provisioning profile
+- [x] Set version + build number
+- [x] Create distribution provisioning profile
 
 ### 3. Clerk Production
 - [x] Create production Clerk app (separate from current test app)
 - [x] Configure Apple Sign In (Service ID + Team ID + Key ID + .p8)
 - [x] Configure Google Sign In (Google Cloud OAuth credentials)
-- [ ] Add `craftedday://oauth-callback` to allowed redirect URLs
+- [x] Add `craftedday://oauth-callback` to allowed redirect URLs
 - [x] Swap all keys to `pk_live_` / `sk_live_` in Vercel + Flutter `.env`
 
 ### 4. RevenueCat + In-App Purchase
-- [ ] Create subscription product in App Store Connect ($19.99/mo)
+- [x] Create subscription product in App Store Connect ($19.99/mo)
 - [x] Set up RevenueCat account + project
-- [ ] Connect App Store Connect to RevenueCat (attach product to default offering)
-- [ ] Configure App Store Server Notifications → RC's ingest URL
+- [x] Connect App Store Connect to RevenueCat (attach product to default offering)
+- [x] Configure App Store Server Notifications → RC's ingest URL
 - [x] Set RC webhook URL + `REVENUECAT_WEBHOOK_SECRET` in Vercel prod
 - [x] Integrate RevenueCat Flutter SDK
 - [x] Backend (`subscriptions` + `usage_periods` tables) is source of truth — mobile reads `/api/usage`, RC SDK only used for identity/purchase/restore + optimistic post-purchase flip

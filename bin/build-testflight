@@ -15,8 +15,19 @@ set -e
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+export APPLE_ID="bennett@thebabybear.com"
+export APPLE_APP_SPECIFIC_PASSWORD="tlun-ctgo-pqfu-ytwe"
+
+PUBSPEC="$ROOT/mobile/pubspec.yaml"
+CURRENT_VERSION_LINE="$(grep '^version:' "$PUBSPEC")"
+MARKETING="$(echo "$CURRENT_VERSION_LINE" | sed -E 's/^version:[[:space:]]*([^+]+)\+.*/\1/')"
+BUILD_NUM="$(echo "$CURRENT_VERSION_LINE" | sed -E 's/^version:[[:space:]]*[^+]+\+([0-9]+).*/\1/')"
+NEXT_BUILD=$((BUILD_NUM + 1))
+sed -i '' -E "s/^version:.*/version: ${MARKETING}+${NEXT_BUILD}/" "$PUBSPEC"
+
 echo "→ Building production iOS IPA for TestFlight"
-echo "  API: https://craftedday.com"
+echo "  API:     https://craftedday.com"
+echo "  Version: ${MARKETING}+${NEXT_BUILD} (was ${MARKETING}+${BUILD_NUM})"
 echo ""
 
 cd "$ROOT/mobile"

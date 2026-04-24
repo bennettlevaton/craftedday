@@ -13,6 +13,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>CraftedDay does not use the microphone.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

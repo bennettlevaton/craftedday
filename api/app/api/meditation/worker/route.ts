@@ -63,7 +63,11 @@ export async function POST(req: NextRequest) {
       primaryGoals: profile.primaryGoals ?? [],
       primaryGoalCustom: profile.primaryGoalCustom,
       preferenceSummary: profile.preferenceSummary,
-    }, { timeOfDay: job.source === "cron" ? null : undefined });
+    }, {
+      timeOfDay: job.source === "cron"
+        ? null
+        : (typeof profile.timeOfDay === "string" ? profile.timeOfDay : undefined),
+    });
     t.scriptMs = Date.now() - ts;
 
     ts = Date.now();

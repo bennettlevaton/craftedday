@@ -72,6 +72,9 @@ export async function POST(req: NextRequest) {
     const profile = await getOrCreateProfile(userId);
     const voiceGender: VoiceGender = profile.voiceGender === "male" ? "male" : "female";
 
+    const clientHour = hourFromClientIso(body.clientNow);
+    const timeOfDay = clientHour !== null ? hourToTimeOfDay(clientHour) : null;
+
     const jobId = await enqueueJob({
       userId,
       prompt,
@@ -83,6 +86,7 @@ export async function POST(req: NextRequest) {
         primaryGoals: profile.primaryGoals ?? [],
         primaryGoalCustom: profile.primaryGoalCustom,
         preferenceSummary: profile.preferenceSummary,
+        timeOfDay,
       },
       source: "user",
     });

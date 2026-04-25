@@ -31,6 +31,15 @@ echo "  Version: ${MARKETING}+${NEXT_BUILD} (was ${MARKETING}+${BUILD_NUM})"
 echo ""
 
 cd "$ROOT/mobile"
+
+# Native-asset packages (objective_c, pulled in transitively) cache their
+# built framework per-arch under build/. Without a clean, `flutter build ipa`
+# after a simulator run can ship the simulator slice and get rejected by
+# App Store Connect:
+#   "objective_c executable references an unsupported platform in the arm64 slice"
+flutter clean
+flutter pub get
+
 flutter build ipa \
   --dart-define=API_BASE_URL="https://craftedday.com" \
   --dart-define=CLERK_PUBLISHABLE_KEY="pk_live_Y2xlcmsuY3JhZnRlZGRheS5jb20k" \

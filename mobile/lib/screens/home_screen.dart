@@ -23,7 +23,7 @@ const _durationOptions = [
   (600, '10 min'),
 ];
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _controller = TextEditingController();
   bool _loading = false;
   String? _name;
@@ -37,11 +37,23 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadName();
     _loadDuration();
     _loadDailySession();
     _loadStats();
     _setupNotifications();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // App returning from background can be stale — daily card may have rolled
+    // over and the streak may have advanced since we last fetched.
+    if (state == AppLifecycleState.resumed && mounted && !_loading) {
+      _loadDailySession();
+      _loadStats();
+      _loadName();
+    }
   }
 
   Future<void> _loadStats() async {
@@ -108,6 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _abandonTimer?.cancel();
     _controller.dispose();
     super.dispose();

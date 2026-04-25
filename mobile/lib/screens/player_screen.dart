@@ -61,6 +61,11 @@ class _PlayerScreenState extends State<PlayerScreen>
           !_navigated) {
         _navigated = true;
         MusicService.instance.stop();
+        apiService.logListen(
+          id: widget.id,
+          listenedSeconds: widget.duration,
+          completed: true,
+        );
         if (widget.replay) {
           context.pop();
         } else {
@@ -108,6 +113,14 @@ class _PlayerScreenState extends State<PlayerScreen>
     final pos = _player.position.inSeconds;
     final total = widget.duration;
     final finishedEnough = total > 0 && pos / total >= 0.7;
+
+    if (!_loadFailed && pos > 0) {
+      apiService.logListen(
+        id: widget.id,
+        listenedSeconds: pos,
+        completed: finishedEnough,
+      );
+    }
 
     if (_loadFailed || !finishedEnough) {
       final reason = await showModalBottomSheet<_ExitReason>(

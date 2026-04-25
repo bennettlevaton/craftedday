@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { meditations } from "@/db/schema";
-import { desc, eq } from "drizzle-orm";
+import { meditations, meditationSessions } from "@/db/schema";
+import { and, desc, eq } from "drizzle-orm";
 import { logError } from "@/lib/log";
 import { getUserId, isAuthError } from "@/lib/auth";
 
@@ -23,7 +23,21 @@ export async function GET(req: NextRequest) {
     const totalSessions = rows.length;
     const totalSeconds = rows.reduce((sum, r) => sum + (r.duration ?? 0), 0);
     const hours = +(totalSeconds / 3600).toFixed(1);
-    const streak = computeStreak(rows.map((r) => r.createdAt));
+
+    // Streak is based on actual listening (meditation_sessions with completed=true),
+    // not just whether a meditation was generated. People can re-listen.
+    const listenRows = await db
+      .select({ createdAt: meditationSessions.createdAt })
+      .from(meditationSessions)
+      .where(
+        and(
+          eq(meditationSessions.userId, userId),
+          eq(meditationSessions.completed, true),
+        ),
+      )
+      .orderBy(desc(meditationSessions.createdAt));
+
+    const streak = computeStreak(listenRows.map((r) => r.createdAt));
     const favoriteTime = computeFavoriteTime(rows.map((r) => r.createdAt));
 
     return NextResponse.json({

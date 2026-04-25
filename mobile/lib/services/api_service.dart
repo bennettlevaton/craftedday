@@ -169,6 +169,24 @@ class ApiService {
     );
   }
 
+  Future<void> logListen({
+    required String id,
+    required int listenedSeconds,
+    required bool completed,
+  }) async {
+    try {
+      await _dio.post(
+        '/api/meditation/$id/listen',
+        data: {
+          'listenedSeconds': listenedSeconds,
+          'completed': completed,
+        },
+      );
+    } catch (_) {
+      // Non-critical — streak just won't credit this listen.
+    }
+  }
+
   Future<List<Meditation>> getHistory() async {
     final res = await _dio.get('/api/history');
     final sessions = (res.data['sessions'] as List).cast<Map<String, dynamic>>();

@@ -69,6 +69,21 @@ export const meditationJobs = pgTable("meditation_jobs", {
   index("meditation_jobs_status_idx").on(t.status),
 ]);
 
+// One row per actual listen. Re-listens create new rows.
+// Streak / "did they meditate today" is derived from this table, not from
+// the existence of a meditations row (which only proves they generated one).
+export const meditationSessions = pgTable("meditation_sessions", {
+  id:              varchar("id", { length: 128 }).primaryKey(),
+  userId:          varchar("user_id", { length: 128 }).notNull(),
+  meditationId:    varchar("meditation_id", { length: 128 }).notNull(),
+  listenedSeconds: integer("listened_seconds").default(0).notNull(),
+  completed:       boolean("completed").default(false).notNull(),
+  createdAt:       timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("meditation_sessions_user_id_idx").on(t.userId),
+  index("meditation_sessions_user_created_idx").on(t.userId, t.createdAt),
+]);
+
 export const meditations = pgTable("meditations", {
   id: varchar("id", { length: 128 }).primaryKey(),
   userId: varchar("user_id", { length: 128 }).notNull(),

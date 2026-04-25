@@ -33,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   UserStats? _stats;
   Timer? _abandonTimer;
   bool _abandoned = false;
+  GoRouter? _goRouter;
 
   @override
   void initState() {
@@ -43,6 +44,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _loadDailySession();
     _loadStats();
     _setupNotifications();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final router = GoRouter.of(context);
+    if (_goRouter != router) {
+      _goRouter?.removeListener(_handleRouterChanged);
+      _goRouter = router;
+      _goRouter!.addListener(_handleRouterChanged);
+    }
+  }
+
+  // Fired on every GoRouter navigation. Refresh data whenever home becomes
+  // the active route (e.g. returning from post-session or history).
+  void _handleRouterChanged() {
+    if (!mounted || _loading) return;
+    final location =
+        _goRouter?.routerDelegate.currentConfiguration.uri.path;
+    if (location == '/home') {
+      _loadStats();
+      _loadDailySession();
+    }
   }
 
   @override
@@ -121,6 +145,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _goRouter?.removeListener(_handleRouterChanged);
     _abandonTimer?.cancel();
     _controller.dispose();
     super.dispose();

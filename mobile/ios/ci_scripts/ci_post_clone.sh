@@ -12,19 +12,31 @@ flutter precache --ios
 
 cd "$CI_PRIMARY_REPOSITORY_PATH/mobile"
 
-# pubspec.yaml declares .env as an asset (gitignored locally). On CI all values
-# come from --dart-define below, so a stub keeps the asset bundler happy.
-echo "→ Creating stub .env"
-touch .env
+# pubspec.yaml declares .env as an asset (gitignored locally). Write the real
+# values from Xcode Cloud env vars so dotenv reads them at runtime — relying on
+# --dart-define alone breaks because xcodebuild archive re-runs flutter assemble
+# without the defines, leaving String.fromEnvironment empty in the shipped app.
+echo "→ Writing .env from Xcode Cloud env vars"
+{
+  echo "API_BASE_URL=$API_BASE_URL"
+  echo "CLERK_PUBLISHABLE_KEY=$CLERK_PUBLISHABLE_KEY"
+  echo "REVENUECAT_API_KEY=$REVENUECAT_API_KEY"
+} > .env
+
+# Fail loudly if any required value wasn't set in the Xcode Cloud workflow —
+# silently shipping an empty key produces a blank-screen app.
+for var in API_BASE_URL CLERK_PUBLISHABLE_KEY REVENUECAT_API_KEY; do
+  if [ -z "$(eval echo \$$var)" ]; then
+    echo "✗ Missing required Xcode Cloud env var: $var" >&2
+    exit 1
+  fi
+done
 
 echo "→ flutter pub get"
 flutter pub get
 
 echo "→ flutter build ios --release --no-codesign"
-flutter build ios --release --no-codesign \
-  --dart-define=API_BASE_URL="$API_BASE_URL" \
-  --dart-define=CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
-  --dart-define=REVENUECAT_API_KEY="$REVENUECAT_API_KEY"
+flutter build ios --release --no-codesign
 
 echo "→ pod install"
 cd ios

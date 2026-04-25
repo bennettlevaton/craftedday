@@ -481,11 +481,12 @@ const TTS_CONCURRENCY = Math.max(
   parseInt(process.env.ELEVENLABS_CONCURRENCY ?? "5", 10) || 5,
 );
 
-// Target speech chars per TTS chunk. Small value = one chunk per sentence-ish, which
-// means every break tag Opus wrote gets honored as exact PCM silence at the right
-// place (not clumped at coarse chunk boundaries). Small-chunk cost is more TTS
-// round-trips — mitigated by concurrency above.
-const TARGET_CHARS_PER_CHUNK = 150;
+// Target speech chars per TTS chunk. ElevenLabs documents v3 as unstable below
+// ~250 chars per request, which was the dominant cause of voice drift between
+// chunks. 400 keeps every chunk well above the threshold while still letting
+// most break tags land as designed PCM silence (silence now lands within ~2-3
+// sentences of designed position instead of 1).
+const TARGET_CHARS_PER_CHUNK = 400;
 
 // Safety cap: if a v3 chunk returns more audio than (expected * this multiplier),
 // we truncate. Expected = text.length / SPOKEN_CHARS_PER_SEC. This keeps a runaway
@@ -647,13 +648,13 @@ export async function generateAudio(
   const started = Date.now();
   const voiceId = VOICES[voiceGender];
   const voiceSettings = {
-    // Higher stability = less random creative drift between chunks (accent, pace,
-    // intonation stay more consistent across the ~10 separate TTS calls per session).
-    // Tradeoff: slightly less expressive prosody.
-    stability: 0.9,
+    // Max stability ("Robust" mode in v3 terms) — the v2-like consistent setting.
+    // Voice locks tightly to reference across chunks. Tradeoff: less expressive
+    // prosody, but for a calm meditation narrator that's the right tradeoff.
+    stability: 1.0,
     similarity_boost: 0.95,
     style: 0.0,
-    use_speaker_boost: true,
+    // use_speaker_boost is not supported on eleven_v3 — omitted.
     speed: 0.85,
   };
 

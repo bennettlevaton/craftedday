@@ -12,8 +12,29 @@ echo "  API: https://craftedday.com"
 echo ""
 
 cd "$ROOT/mobile"
+
+# Pass a device id as first arg, or "device" to pick the first physical iOS
+# device, or nothing to let Flutter choose.
+DEVICE_FLAG=()
+if [ "$1" = "device" ]; then
+  DEVICE_ID="$(flutter devices --machine 2>/dev/null | \
+    python3 -c 'import json,sys; d=json.load(sys.stdin); print(next((x["id"] for x in d if x.get("platformType")=="ios" and not x.get("emulator")), ""))')"
+  if [ -z "$DEVICE_ID" ]; then
+    echo "✗ No physical iOS device found. Is it plugged in, unlocked, and trusted?"
+    flutter devices
+    exit 1
+  fi
+  echo "  Device: $DEVICE_ID"
+  DEVICE_FLAG=(-d "$DEVICE_ID")
+elif [ -n "$1" ]; then
+  DEVICE_FLAG=(-d "$1")
+fi
+
+MODE="${MODE:---release}"
+
 flutter run \
+  "${DEVICE_FLAG[@]}" \
   --dart-define=API_BASE_URL="https://craftedday.com" \
   --dart-define=CLERK_PUBLISHABLE_KEY="pk_live_Y2xlcmsuY3JhZnRlZGRheS5jb20k" \
   --dart-define=REVENUECAT_API_KEY="appl_JjKCtphOHklZhBzOHfkPrajvIYk" \
-  --release
+  $MODE

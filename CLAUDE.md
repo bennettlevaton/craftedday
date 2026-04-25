@@ -230,7 +230,9 @@ user_profiles   — user_id (Clerk), name, experience_level, primary_goals[],
 daily_sessions  — (user_id, date) primary key, meditation_id, created_at
 meditations     — id, user_id, prompt, script, audio_url, duration, title,
                   feeling, what_helped, feedback, is_favorite, created_at
-meditation_jobs — async generation queue (pending → processing → done/failed)
+meditation_jobs — async generation status row (pending → processing → done/failed).
+                  Driven by Vercel Queues (topic: meditation-generate). The row is
+                  the polling source of truth for /api/meditation/jobs/[id].
 subscriptions   — clerk_id PK, status, period_type, product_id,
                   period_start, period_end — one row per user, fed by RC webhook
 usage_periods   — append-only; one row per billing period. custom_minutes_used,
@@ -464,6 +466,7 @@ Key idea: **ElevenLabs only does pure speech. We own all silence.** Break tags n
 
 ## Decisions Log
 
+- **Async generation runs on Vercel Queues (`@vercel/queue`, topic `meditation-generate`).** Replaced the previous DB-poll + self-`fetch` chain, which dropped invocations and left jobs stuck in `pending` with no retry. Producer is `send()` inside `enqueueJob` (`api/lib/jobs.ts`); consumer is `handleCallback` in `app/api/meditation/worker/route.ts` (air-gapped — no bearer auth needed). `meditation_jobs` row is still the polling source of truth for mobile, just not the queue itself. Visibility timeout 600s with SDK auto-extend covers our ~30s typical / 800s max generations. Retry policy: up to 3 deliveries; on final failure handler writes `status: "failed"` and acks. **Concurrency = 1** for now — set in the Vercel dashboard (Project → Queues → `meditation-generate` consumer group → Max Concurrency). Bump there as ElevenLabs plan allows.
 - **Warm light palette (not dark).** User associates meditation with warm, inviting colors — sand, linen, morning sunlight. Rejected dark "deep dusk" proposal.
 - **PlanetScale PostgreSQL, not MySQL.** User's connection string is Postgres. Switched from `@planetscale/database` (MySQL HTTP driver) to `postgres` (postgres.js).
 - **Admin credential for migrations, app credential for runtime.** `pg_read_all_data` + `pg_write_all_data` roles can't DDL. User needs admin role only for `db:push`; app uses restricted role.

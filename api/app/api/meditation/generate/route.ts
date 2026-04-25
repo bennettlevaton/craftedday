@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getUserId, isAuthError } from "@/lib/auth";
 import { getOrCreateProfile } from "@/lib/user";
 import { checkSubscriptionAndQuota } from "@/lib/subscription";
-import { enqueueJob, triggerWorker } from "@/lib/jobs";
+import { enqueueJob } from "@/lib/jobs";
 import { log, logError } from "@/lib/log";
 import type { VoiceGender } from "@/lib/elevenlabs";
 import { randomUUID } from "crypto";
@@ -92,8 +92,6 @@ export async function POST(req: NextRequest) {
     });
 
     log(`gen:${reqId}`, "enqueued", { userId, jobId, targetSeconds });
-
-    after(() => triggerWorker());
 
     return NextResponse.json({ jobId });
   } catch (err) {

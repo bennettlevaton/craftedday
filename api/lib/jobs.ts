@@ -1,7 +1,10 @@
 import { randomUUID } from "crypto";
+import { send } from "@vercel/queue";
 import { db } from "./db";
 import { meditationJobs } from "@/db/schema";
 import type { VoiceGender } from "./elevenlabs";
+
+export const QUEUE_TOPIC = "meditation-generate";
 
 type ProfileSnapshot = {
   name: string | null;
@@ -21,6 +24,8 @@ type EnqueueParams = {
   source?: "user" | "cron";
 };
 
+export type QueueJobMessage = { jobId: string };
+
 export async function enqueueJob(params: EnqueueParams): Promise<string> {
   const id = randomUUID();
   await db.insert(meditationJobs).values({
@@ -32,19 +37,6 @@ export async function enqueueJob(params: EnqueueParams): Promise<string> {
     profileSnapshot: JSON.stringify(params.profile),
     source: params.source ?? "user",
   });
+  await send<QueueJobMessage>(QUEUE_TOPIC, { jobId: id });
   return id;
-}
-
-function getWorkerUrl(): string {
-  if (process.env.WORKER_URL) return process.env.WORKER_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}/api/meditation/worker`;
-  return "http://localhost:3000/api/meditation/worker";
-}
-
-export function triggerWorker(): void {
-  const url = getWorkerUrl();
-  fetch(url, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
-  }).catch(() => {});
 }

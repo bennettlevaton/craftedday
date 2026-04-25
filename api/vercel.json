@@ -4,5 +4,16 @@
       "path": "/api/cron/generate-daily",
       "schedule": "0 8 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "app/api/meditation/worker/route.ts": {
+      "maxDuration": 800,
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "meditation-generate"
+        }
+      ]
+    }
+  }
 }

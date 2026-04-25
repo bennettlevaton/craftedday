@@ -1,8 +1,7 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { userProfiles } from "@/db/schema";
-import { triggerWorker } from "@/lib/jobs";
 import { isSubscribed } from "@/lib/subscription";
 import { enqueueDailyForUser, todayPacific } from "@/lib/daily";
 import { log, logError } from "@/lib/log";
@@ -46,8 +45,6 @@ export async function GET(req: NextRequest) {
   );
 
   log("cron:daily", "enqueued", counts);
-
-  after(() => triggerWorker());
 
   return NextResponse.json(counts);
 }

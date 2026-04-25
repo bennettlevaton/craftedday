@@ -66,7 +66,6 @@ export const meditationJobs = pgTable("meditation_jobs", {
   completedAt:     timestamp("completed_at"),
 }, (t) => [
   index("meditation_jobs_user_id_idx").on(t.userId),
-  index("meditation_jobs_status_idx").on(t.status),
 ]);
 
 // One row per actual listen. Re-listens create new rows.

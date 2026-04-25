@@ -330,7 +330,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       onTap: _startDailySession,
                       durationSeconds:
                           (_dailySession!['duration'] as int?) ?? 600,
-                      theme: _themeLabel(_goals),
                     ),
                     const SizedBox(height: 28),
                   ],
@@ -459,18 +458,6 @@ String _hintForGoals(List<String> goals) {
   };
 }
 
-String? _themeLabel(List<String> goals) {
-  final primary = goals.isEmpty ? null : goals.first;
-  return switch (primary) {
-    'stress' => 'Stress',
-    'sleep' => 'Sleep',
-    'focus' => 'Focus',
-    'anxiety' => 'Anxiety',
-    'general' => null,
-    _ => null,
-  };
-}
-
 class _StreakChip extends StatelessWidget {
   final int streak;
   const _StreakChip({required this.streak});
@@ -511,18 +498,16 @@ class _StreakChip extends StatelessWidget {
 class _DailySessionCard extends StatelessWidget {
   final VoidCallback onTap;
   final int durationSeconds;
-  final String? theme;
   const _DailySessionCard({
     required this.onTap,
     required this.durationSeconds,
-    this.theme,
   });
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final minutes = (durationSeconds / 60).round();
-    final subtitle = theme == null ? '$minutes min' : '$minutes min · $theme';
+    final subtitle = '$minutes min';
     return GestureDetector(
       onTap: onTap,
       child: Container(

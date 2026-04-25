@@ -94,6 +94,7 @@ export const meditations = pgTable("meditations", {
   feeling: varchar("feeling", { length: 10 }),      // calmer | same | tense
   whatHelped: varchar("what_helped", { length: 32 }), // breath | body | silence | visualization
   feedback: text("feedback"),
+  archetype: varchar("archetype", { length: 32 }),  // daily-session archetype id (null for custom)
   isFavorite: boolean("is_favorite").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

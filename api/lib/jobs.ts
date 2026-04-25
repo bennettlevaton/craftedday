@@ -13,6 +13,7 @@ type ProfileSnapshot = {
   primaryGoalCustom: string | null;
   preferenceSummary: string | null;
   timeOfDay?: string | null;
+  archetype?: string;
 };
 
 type EnqueueParams = {

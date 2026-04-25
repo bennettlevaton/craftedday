@@ -129,9 +129,11 @@ function buildListenerContextBlock(ctx: ListenerContext): string {
     if (ctx.primaryGoals.includes("other") && ctx.primaryGoalCustom) {
       parts.push(`also: "${ctx.primaryGoalCustom}"`);
     }
-    lines.push(`- Primary intentions: ${parts.join(" · ")}`);
+    lines.push(
+      `- Long-term direction (background only — do NOT make this session about it unless the user's prompt asks): ${parts.join(" · ")}`,
+    );
     if (biases.length > 0) {
-      lines.push(`  (${biases.join("; ")})`);
+      lines.push(`  (let it subtly shape pacing/tone: ${biases.join("; ")})`);
     }
   }
   if (ctx.preferenceSummary) {

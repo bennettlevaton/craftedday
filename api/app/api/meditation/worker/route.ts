@@ -86,6 +86,7 @@ export const POST = handleCallback<QueueJobMessage>(
         script,
         audioUrl,
         duration: job.durationSeconds,
+        archetype: typeof profile.archetype === "string" ? profile.archetype : null,
       });
 
       if (job.source === "cron") {

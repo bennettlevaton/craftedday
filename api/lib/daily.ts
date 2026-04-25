@@ -5,6 +5,7 @@ import { dailySessions, meditations } from "@/db/schema";
 import { enqueueJob } from "./jobs";
 import { getOrCreateProfile } from "./user";
 import { log } from "./log";
+import { archetypePrompt, pickDailyArchetype } from "./archetypes";
 import welcomeData from "./welcome-data.json";
 import type { VoiceGender } from "./elevenlabs";
 
@@ -13,13 +14,6 @@ const DEFAULT_DURATION = 600;
 // Pacific Time — must match /api/session/daily lookup and the cron timezone.
 export function todayPacific(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
-}
-
-function dailyPrompt(profile: { primaryGoals: string[] | null; experienceLevel: string | null }): string {
-  const goals = profile.primaryGoals?.filter((g) => g !== "other") ?? [];
-  const focus = goals.length > 0 ? goals.join(" and ") : "general wellbeing";
-  const level = profile.experienceLevel ?? "intermediate";
-  return `A grounding meditation for a ${level} practitioner focused on ${focus}`;
 }
 
 // Idempotent: returns { enqueued: false, reason } if the user already has a
@@ -41,9 +35,15 @@ export async function enqueueDailyForUser(userId: string): Promise<
   const profile = await getOrCreateProfile(userId);
   const voiceGender: VoiceGender = profile.voiceGender === "male" ? "male" : "female";
 
+  const archetype = await pickDailyArchetype({
+    userId,
+    primaryGoals: (profile.primaryGoals ?? []).filter((g) => g !== "other"),
+  });
+  log("daily", "archetype picked", { userId, archetype: archetype.id });
+
   const jobId = await enqueueJob({
     userId,
-    prompt: dailyPrompt(profile),
+    prompt: archetypePrompt(archetype, profile.experienceLevel),
     durationSeconds: DEFAULT_DURATION,
     voiceGender,
     profile: {
@@ -52,6 +52,7 @@ export async function enqueueDailyForUser(userId: string): Promise<
       primaryGoals: profile.primaryGoals ?? [],
       primaryGoalCustom: profile.primaryGoalCustom,
       preferenceSummary: profile.preferenceSummary,
+      archetype: archetype.id,
     },
     source: "cron",
   });

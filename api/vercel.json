@@ -11,7 +11,8 @@
       "experimentalTriggers": [
         {
           "type": "queue/v2beta",
-          "topic": "meditation-generate"
+          "topic": "meditation-generate",
+          "maxConcurrency": 1
         }
       ]
     }

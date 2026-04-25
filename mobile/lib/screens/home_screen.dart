@@ -51,9 +51,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.didChangeDependencies();
     final router = GoRouter.of(context);
     if (_goRouter != router) {
-      _goRouter?.removeListener(_handleRouterChanged);
+      _goRouter?.routerDelegate.removeListener(_handleRouterChanged);
       _goRouter = router;
-      _goRouter!.addListener(_handleRouterChanged);
+      _goRouter!.routerDelegate.addListener(_handleRouterChanged);
     }
   }
 
@@ -145,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _goRouter?.removeListener(_handleRouterChanged);
+    _goRouter?.routerDelegate.removeListener(_handleRouterChanged);
     _abandonTimer?.cancel();
     _controller.dispose();
     super.dispose();

@@ -12,6 +12,11 @@ flutter precache --ios
 
 cd "$CI_PRIMARY_REPOSITORY_PATH/mobile"
 
+# pubspec.yaml declares .env as an asset (gitignored locally). On CI all values
+# come from --dart-define below, so a stub keeps the asset bundler happy.
+echo "→ Creating stub .env"
+touch .env
+
 echo "→ flutter pub get"
 flutter pub get
 

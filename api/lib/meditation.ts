@@ -2,7 +2,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { spawn } from "child_process";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
 import { anthropic } from "./claude";
-import { elevenlabs, VOICES, type VoiceGender } from "./elevenlabs";
+import { elevenlabs, VOICES, VOICE_SEEDS, type VoiceGender } from "./elevenlabs";
 import { log } from "./log";
 import { db } from "./db";
 import { meditations, userProfiles } from "@/db/schema";
@@ -680,9 +680,10 @@ export async function generateAudio(
   try {
     // Synthesize all chunks with bounded concurrency + per-chunk duration safety cap.
     // If a v3 chunk hallucinates (returns >2.2x expected audio), we truncate it.
-    // One random seed for the whole session. Every chunk uses it so the voice
-    // samples from the same generative neighborhood — less accent/pace drift.
-    const sessionSeed = Math.floor(Math.random() * 2_147_483_647);
+    // Fixed per-voice seed (not per-session). Reuses the same generative
+    // neighborhood across every chunk and every session, so the narrator
+    // sounds like the same person every time.
+    const sessionSeed = VOICE_SEEDS[voiceGender];
 
     const pcmChunks = await parallelMap(ttsChunks, TTS_CONCURRENCY, async (chunk, idx) => {
       const expectedSec = Math.max(4, chunk.text.length / SPOKEN_CHARS_PER_SEC);

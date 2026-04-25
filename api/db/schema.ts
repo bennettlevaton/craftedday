@@ -1,3 +1,4 @@
+import { desc } from "drizzle-orm";
 import { pgTable, varchar, text, integer, timestamp, boolean, index, primaryKey } from "drizzle-orm/pg-core";
 
 // No users table — Clerk provides the user ID directly on every request.
@@ -97,4 +98,9 @@ export const meditations = pgTable("meditations", {
   archetype: varchar("archetype", { length: 32 }),  // daily-session archetype id (null for custom)
   isFavorite: boolean("is_favorite").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  // /history, /stats, /favorites, archetype affinity, preference summary all
+  // query (user_id) ordered by created_at desc. Without this the planner sorts
+  // every user-row set on each call.
+  index("meditations_user_created_idx").on(t.userId, desc(t.createdAt)),
+]);

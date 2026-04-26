@@ -4,7 +4,7 @@ import { getOrCreateProfile } from "@/lib/user";
 import { checkSubscriptionAndQuota } from "@/lib/subscription";
 import { enqueueJob } from "@/lib/jobs";
 import { log, logError } from "@/lib/log";
-import type { VoiceGender } from "@/lib/elevenlabs";
+import type { VoiceGender } from "@/lib/inworld";
 import { randomUUID } from "crypto";
 
 export const runtime = "nodejs";

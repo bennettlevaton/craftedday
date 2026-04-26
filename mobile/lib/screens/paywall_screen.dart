@@ -25,7 +25,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
       _package == null || _package!.storeProduct.introductoryPrice != null;
 
   String get _priceString =>
-      _package?.storeProduct.priceString ?? '\$19.99';
+      _package?.storeProduct.priceString ?? '\$9.99';
 
   @override
   void initState() {

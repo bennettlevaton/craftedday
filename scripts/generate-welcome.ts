@@ -1,5 +1,5 @@
 // Generates the one-time welcome meditation via the same pipeline used for
-// every other session (Haiku plan → Opus sections → eleven_v3 TTS → PCM
+// every other session (Haiku plan → Opus sections → Inworld TTS → PCM
 // assembly), so tone, pacing, and duration land identically to live output.
 //
 // Produces female + male audio, uploads to R2, and writes the full data
@@ -17,7 +17,7 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { config } from "dotenv";
 
 // Must load env BEFORE importing any api/lib module — those modules
-// initialize Anthropic/ElevenLabs/R2 clients at module-load time using
+// initialize Anthropic/Inworld/R2 clients at module-load time using
 // process.env. Static imports are hoisted above this call, so we load
 // the pipeline modules dynamically inside main().
 config({ path: ".env.local" });

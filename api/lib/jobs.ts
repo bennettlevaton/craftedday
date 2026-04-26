@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { send } from "@vercel/queue";
 import { db } from "./db";
 import { meditationJobs } from "@/db/schema";
-import type { VoiceGender } from "./elevenlabs";
+import type { VoiceGender } from "./inworld";
 
 export const QUEUE_TOPIC = "meditation-generate";
 

@@ -7,9 +7,13 @@ import { getOrCreateProfile } from "./user";
 import { log } from "./log";
 import { archetypePrompt, pickDailyArchetype } from "./archetypes";
 import welcomeData from "./welcome-data.json";
-import type { VoiceGender } from "./elevenlabs";
+import type { VoiceGender } from "./inworld";
 
-const DEFAULT_DURATION = 600;
+// Daily cron sessions are 5 minutes — at 10 min, TTS cost per active sub exceeds
+// the post-Apple/RC net at our $9.99 price point across all experience levels.
+// 5 min keeps margins healthy without dropping voice quality. Custom user-
+// initiated generation is unaffected — it has its own duration param.
+const DEFAULT_DURATION = 300;
 
 // Pacific Time — must match /api/session/daily lookup and the cron timezone.
 export function todayPacific(): string {
@@ -61,7 +65,7 @@ export async function enqueueDailyForUser(userId: string): Promise<
 }
 
 // Grants today's daily session to a newly-onboarded user using the pre-generated
-// welcome meditation (no wait, no ElevenLabs burn per user — the audio file in R2
+// welcome meditation (no wait, no TTS burn per user — the audio file in R2
 // is shared across all users, but each user gets their own `meditations` row so
 // history/stats/check-ins work unchanged).
 //

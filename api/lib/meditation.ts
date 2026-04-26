@@ -2,7 +2,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { spawn } from "child_process";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
 import { anthropic } from "./claude";
-import { elevenlabs, VOICES, VOICE_SEEDS, type VoiceGender } from "./elevenlabs";
+import { INWORLD_VOICES, inworldTTSToMp3, type VoiceGender } from "./inworld";
 import { log } from "./log";
 import { db } from "./db";
 import { meditations, userProfiles } from "@/db/schema";
@@ -17,8 +17,8 @@ const SUMMARY_MODEL = "claude-sonnet-4-6";
 // generation target asked of Opus and the post-hoc duration estimate.
 const SPOKEN_CHARS_PER_SEC = 10;
 
-// We own silence ourselves — break tags never reach ElevenLabs. So we honor their
-// written duration exactly when estimating and when rendering silent PCM.
+// We own silence ourselves — break tags never reach the TTS engine. So we honor
+// their written duration exactly when estimating and when rendering silent PCM.
 // Average used for planning only (prompt-side estimate of "how many tags per section").
 const AVG_BREAK_SECONDS = 6;
 
@@ -444,7 +444,7 @@ export async function generateScript(
   const rawScript = sectionTexts.join("\n\n");
 
   // Clamp any out-of-range break tag values to the allowed set {3, 6, 9, 12}.
-  // ElevenLabs never sees these — we parse them into silent PCM ourselves.
+  // The TTS engine never sees these — we parse them into silent PCM ourselves.
   const processed = clampBreakTags(rawScript);
 
   log("write", "script ready", {
@@ -476,18 +476,17 @@ function clampBreakTags(script: string): string {
 // Minimum silence inserted at the tail of every session.
 const MIN_TAIL_SILENCE_SECONDS = 6;
 
-// Parallelism for TTS requests — capped by your ElevenLabs plan's concurrent-request
-// limit. Override via ELEVENLABS_CONCURRENCY env var when you upgrade the plan.
+// Parallelism for TTS requests — capped by Inworld's concurrent-request limit
+// for your plan. Override via TTS_CONCURRENCY env var when you upgrade.
 const TTS_CONCURRENCY = Math.max(
   1,
-  parseInt(process.env.ELEVENLABS_CONCURRENCY ?? "5", 10) || 5,
+  parseInt(process.env.TTS_CONCURRENCY ?? "5", 10) || 5,
 );
 
-// Target speech chars per TTS chunk. ElevenLabs documents v3 as unstable below
-// ~250 chars per request, which was the dominant cause of voice drift between
-// chunks. 400 keeps every chunk well above the threshold while still letting
-// most break tags land as designed PCM silence (silence now lands within ~2-3
-// sentences of designed position instead of 1).
+// Target speech chars per TTS chunk. Smaller chunks let more break tags land
+// as designed PCM silence (silence boundaries align with sentence ends).
+// 400 is a balance: small enough that most pauses become real gaps, large
+// enough that voice consistency holds across chunks.
 const TARGET_CHARS_PER_CHUNK = 400;
 
 // Safety cap: if a v3 chunk returns more audio than (expected * this multiplier),
@@ -500,7 +499,7 @@ type ScriptSegment =
   | { kind: "pause"; seconds: number };
 
 // Parse a script with <break time="Xs" /> tags into alternating speech/pause segments.
-// Break tags are fully owned by us from here on — they never reach ElevenLabs.
+// Break tags are fully owned by us from here on — they never reach the TTS engine.
 function parseScriptSegments(script: string): ScriptSegment[] {
   const segments: ScriptSegment[] = [];
   const re = /<break time="(\d+(?:\.\d+)?)s"\s*\/>/g;
@@ -518,12 +517,12 @@ function parseScriptSegments(script: string): ScriptSegment[] {
 }
 
 type TtsChunk = {
-  text: string;               // plain speech sent to ElevenLabs (no break tags)
+  text: string;               // plain speech sent to the TTS engine (no break tags)
   followingPauseSec: number;  // silent PCM to concat AFTER this chunk's audio
 };
 
 // Group segments into TTS chunks. A chunk is a run of speech joined by the pauses
-// that fall inside it (rendered as "..." so ElevenLabs gives a natural micro-pause).
+// that fall inside it (rendered as "..." so the TTS engine gives a natural micro-pause).
 // When a pause arrives and the current chunk has enough text, that pause becomes
 // the chunk boundary and its seconds are preserved as inter-chunk silent PCM.
 function buildTtsChunks(segments: ScriptSegment[]): TtsChunk[] {
@@ -590,8 +589,10 @@ async function parallelMap<T, R>(
   return results;
 }
 
-// PCM spec: 22050 Hz, 16-bit signed little-endian, mono.
-const PCM_SAMPLE_RATE = 22050;
+// PCM spec: 44100 Hz, 16-bit signed little-endian, mono. Inworld returns MP3 at
+// its native rate (44.1kHz). We decode locally so silence insertion happens in
+// PCM space.
+const PCM_SAMPLE_RATE = 44100;
 const PCM_BYTE_RATE = PCM_SAMPLE_RATE * 2; // 16-bit mono
 
 // Produce N seconds of silent 16-bit PCM at PCM_SAMPLE_RATE. Silence = all-zero bytes.
@@ -603,11 +604,26 @@ function silencePcm(seconds: number): Buffer {
   return Buffer.alloc(bytes);
 }
 
+function mp3ToPcm(mp3: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const ff = spawn(ffmpegPath.path, [
+      "-f", "mp3", "-i", "pipe:0",
+      "-f", "s16le", "-ar", String(PCM_SAMPLE_RATE), "-ac", "1", "pipe:1",
+    ]);
+    const out: Buffer[] = [];
+    ff.stdout.on("data", (d: Buffer) => out.push(d));
+    ff.stderr.on("data", () => {});
+    ff.on("close", (code) => code === 0 ? resolve(Buffer.concat(out)) : reject(new Error(`ffmpeg decode exited ${code}`)));
+    ff.stdin.write(mp3);
+    ff.stdin.end();
+  });
+}
+
 function pcmToMp3(pcm: Buffer): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const ff = spawn(ffmpegPath.path, [
       "-f", "s16le", "-ar", String(PCM_SAMPLE_RATE), "-ac", "1", "-i", "pipe:0",
-      "-codec:a", "libmp3lame", "-b:a", "128k", "-f", "mp3", "pipe:1",
+      "-codec:a", "libmp3lame", "-b:a", "192k", "-f", "mp3", "pipe:1",
     ]);
     const out: Buffer[] = [];
     ff.stdout.on("data", (d: Buffer) => out.push(d));
@@ -620,26 +636,13 @@ function pcmToMp3(pcm: Buffer): Promise<Buffer> {
 
 async function synthesizeChunk(
   text: string,
-  voiceId: string,
-  voiceSettings: Record<string, unknown>,
-  seed: number,
+  voiceGender: VoiceGender,
 ): Promise<Buffer> {
-  // eleven_v3 doesn't support previous_text/next_text request stitching. The only
-  // cross-chunk consistency knobs available are voice_settings (stability etc.)
-  // and a shared seed — passing the same seed to every chunk in a session makes
-  // the model's random draws reproducible, which reduces accent/pace drift.
-  const stream = await elevenlabs.textToSpeech.convert(voiceId, {
-    text,
-    model_id: "eleven_v3",
-    output_format: "pcm_22050",
-    voice_settings: voiceSettings,
-    seed,
-  }, { timeoutInSeconds: 300 });
-  const parts: Buffer[] = [];
-  for await (const chunk of stream) {
-    parts.push(Buffer.from(chunk));
-  }
-  return Buffer.concat(parts);
+  // Returns 44.1k mono 16-bit PCM so silence insertion / concat downstream
+  // doesn't need to know about the TTS provider.
+  const inworldVoiceId = INWORLD_VOICES[voiceGender];
+  const mp3 = await inworldTTSToMp3(text, inworldVoiceId);
+  return await mp3ToPcm(mp3);
 }
 
 export async function generateAudio(
@@ -648,25 +651,15 @@ export async function generateAudio(
   targetSeconds: number,
 ): Promise<Buffer> {
   const started = Date.now();
-  const voiceId = VOICES[voiceGender];
-  const voiceSettings = {
-    // Max stability ("Robust" mode in v3 terms) — the v2-like consistent setting.
-    // Voice locks tightly to reference across chunks. Tradeoff: less expressive
-    // prosody, but for a calm meditation narrator that's the right tradeoff.
-    stability: 1.0,
-    similarity_boost: 0.95,
-    style: 0.0,
-    // use_speaker_boost is not supported on eleven_v3 — omitted.
-    speed: 0.85,
-  };
+  const voiceId = INWORLD_VOICES[voiceGender];
 
   // Parse the script into speech/pause segments and build TTS chunks.
-  // ElevenLabs only sees pure spoken text — never break tags. We own silence entirely.
+  // The TTS engine only sees pure spoken text — never break tags. We own silence entirely.
   const segments = parseScriptSegments(script);
   const ttsChunks = buildTtsChunks(segments);
   const totalPlannedSilence = ttsChunks.reduce((a, c) => a + c.followingPauseSec, 0);
 
-  log("elevenlabs", "synthesizing audio", {
+  log("tts", "synthesizing audio", {
     voiceGender,
     voiceId,
     scriptChars: script.length,
@@ -675,32 +668,23 @@ export async function generateAudio(
     chunkChars: ttsChunks.map((c) => c.text.length),
     plannedInterChunkSilence: ttsChunks.map((c) => c.followingPauseSec),
     totalPlannedSilence,
-    model: "eleven_v3",
-    voiceSettings,
+    model: "inworld-tts-1.5-max",
   });
 
   try {
-    // Synthesize all chunks with bounded concurrency + per-chunk duration safety cap.
-    // If a v3 chunk hallucinates (returns >2.2x expected audio), we truncate it.
-    // Fixed per-voice seed (not per-session). Reuses the same generative
-    // neighborhood across every chunk and every session, so the narrator
-    // sounds like the same person every time.
-    const sessionSeed = VOICE_SEEDS[voiceGender];
-
+    // Synthesize all chunks with bounded concurrency + per-chunk duration safety
+    // cap. The cap was originally a defense against eleven_v3 hallucinations
+    // emitting 10+ minutes of garbage; Inworld is far more deterministic, but
+    // the cap stays as cheap insurance against any provider-side regression.
     const pcmChunks = await parallelMap(ttsChunks, TTS_CONCURRENCY, async (chunk, idx) => {
       const expectedSec = Math.max(4, chunk.text.length / SPOKEN_CHARS_PER_SEC);
       const maxSec = expectedSec * CHUNK_DURATION_SAFETY_MULTIPLIER + 5;
-      const pcm = await synthesizeChunk(
-        chunk.text,
-        voiceId,
-        voiceSettings,
-        sessionSeed,
-      );
+      const pcm = await synthesizeChunk(chunk.text, voiceGender);
       const actualSec = pcm.length / PCM_BYTE_RATE;
       if (actualSec > maxSec) {
         const cap = Math.round(maxSec * PCM_BYTE_RATE);
         const truncated = pcm.subarray(0, cap - (cap % 2));
-        log("elevenlabs", "chunk duration exceeded safety cap, truncating", {
+        log("tts", "chunk duration exceeded safety cap, truncating", {
           chunkIndex: idx,
           textChars: chunk.text.length,
           expectedSec: Math.round(expectedSec),
@@ -751,7 +735,7 @@ export async function generateAudio(
     const totalSpokenChars = ttsChunks.reduce((a, c) => a + c.text.length, 0);
     const observedSpokenCharsPerSec = +(totalSpokenChars / rawSpokenSeconds).toFixed(2);
 
-    log("elevenlabs", "audio ready", {
+    log("tts", "audio ready", {
       ms: Date.now() - started,
       bytes: buf.length,
       targetSeconds,
@@ -769,17 +753,7 @@ export async function generateAudio(
 
     return buf;
   } catch (err: unknown) {
-    if (err && typeof err === "object" && "body" in err) {
-      try {
-        const body = (err as { body: ReadableStream }).body;
-        const reader = body.getReader();
-        const { value } = await reader.read();
-        const text = new TextDecoder().decode(value);
-        log("elevenlabs", "error body", { body: text });
-      } catch {
-        // ignore — original error still throws below
-      }
-    }
+    log("tts", "synthesis failed", { err: err instanceof Error ? err.message : String(err) });
     throw err;
   }
 }

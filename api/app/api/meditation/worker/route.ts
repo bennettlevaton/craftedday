@@ -8,7 +8,7 @@ import { generateAudio, generateScript } from "@/lib/meditation";
 import { deductCustomMinutes } from "@/lib/subscription";
 import { log, logError } from "@/lib/log";
 import type { QueueJobMessage } from "@/lib/jobs";
-import type { VoiceGender } from "@/lib/elevenlabs";
+import type { VoiceGender } from "@/lib/inworld";
 
 export const runtime = "nodejs";
 export const maxDuration = 800;

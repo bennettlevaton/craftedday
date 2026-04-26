@@ -1,6 +1,12 @@
 // Generates an ambient meditation track via ElevenLabs Music API and uploads
 // it to the craftedday R2 bucket under stock_music/<uuid>.mp3.
 //
+// EXCEPTION: this is the only place ElevenLabs is still used. Inworld doesn't
+// offer music generation, and runtime TTS has fully migrated to Inworld.
+// Requires ELEVENLABS_API_KEY in .env.local — keep that key around if you
+// expect to generate more music tracks. The MP3s already in R2 are sufficient
+// for current users; this script only runs when adding new ambient variety.
+//
 // Run from the api/ directory so that dotenv picks up api/.env.local and the
 // api/ node_modules is in scope:
 //

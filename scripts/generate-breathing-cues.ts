@@ -1,5 +1,6 @@
 // Generates TTS audio for each breathing cue shown on the loading screen.
-// Produces both female and male voice variants.
+// Produces both female (Luna) and male (Gareth) voice variants on Inworld TTS,
+// matching the runtime voice picks in api/lib/inworld.ts.
 //
 // Run from the api/ directory:
 //   cd api && npm run cues:generate
@@ -13,24 +14,20 @@ import { config } from "dotenv";
 
 config({ path: ".env.local" });
 
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!;
-if (!ELEVENLABS_API_KEY) {
-  console.error("Missing ELEVENLABS_API_KEY");
+const IN_WORLD_API = process.env.IN_WORLD_API;
+if (!IN_WORLD_API) {
+  console.error("Missing IN_WORLD_API");
   process.exit(1);
 }
 
 const VOICES = {
-  female: "pjcYQlDFKMbcOUp6F5GD",
-  male: "FxUqz8G7NkRtbO7TA7gS",
+  female: "Luna",
+  male: "Gareth",
 } as const;
 
-const VOICE_SETTINGS = {
-  stability: 0.35,
-  similarity_boost: 0.75,
-  style: 0.0,
-  use_speaker_boost: true,
-  speed: 0.75,
-};
+// Slower than the meditation pace — cues are short, slowing them lets each
+// breath instruction breathe (heh).
+const SPEAKING_RATE = 0.8;
 
 const CUES = [
   "Crafting your session. Begin settling in now.",
@@ -52,34 +49,34 @@ const CUES = [
   "Your session is almost ready.",
 ];
 
-async function generateCue(
-  text: string,
-  voiceId: string,
-): Promise<Buffer> {
-  const res = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-    {
-      method: "POST",
-      headers: {
-        "xi-api-key": ELEVENLABS_API_KEY,
-        "Content-Type": "application/json",
-        Accept: "audio/mpeg",
-      },
-      body: JSON.stringify({
-        text,
-        model_id: "eleven_flash_v2_5",
-        output_format: "mp3_44100_128",
-        voice_settings: VOICE_SETTINGS,
-      }),
+async function generateCue(text: string, voiceId: string): Promise<Buffer> {
+  const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${IN_WORLD_API}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      text,
+      voice_id: voiceId,
+      model_id: "inworld-tts-1.5-max",
+      audio_config: {
+        audio_encoding: "MP3",
+        speaking_rate: SPEAKING_RATE,
+      },
+    }),
+  });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`ElevenLabs error ${res.status}: ${err}`);
+    const err = await res.text().catch(() => "<unreadable>");
+    throw new Error(`Inworld TTS ${res.status}: ${err.slice(0, 200)}`);
   }
 
-  return Buffer.from(await res.arrayBuffer());
+  const json = (await res.json()) as { audioContent?: string };
+  if (!json.audioContent) {
+    throw new Error("Inworld response missing audioContent");
+  }
+  return Buffer.from(json.audioContent, "base64");
 }
 
 async function main() {

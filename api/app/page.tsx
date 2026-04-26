@@ -78,6 +78,7 @@ export default function Home() {
         <ul className="flex flex-col gap-4">
           {[
             'A fresh session every morning, shaped just for you',
+            '150 minutes of custom sessions, on demand, each month',
             'A voice that adapts to your experience and pace',
             'Mood check-ins that make each session better than the last',
             'Background music that stays in sync with your voice guide',
@@ -93,7 +94,7 @@ export default function Home() {
 
         {/* Subscription note */}
         <p className="mt-10 text-sm text-muted text-center leading-relaxed border border-divider rounded-2xl px-6 py-4 bg-surface">
-          Start with a 3-day free trial, then $19.99/month. Cancel any time from Settings.
+          Start with a 3-day free trial, then $9.99/month. Cancel any time from Settings.
         </p>
       </section>
 

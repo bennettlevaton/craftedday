@@ -156,14 +156,14 @@ class ApiService {
   Future<CheckinResult> submitCheckin({
     required String id,
     required String feeling,
-    String? whatHelped,
+    List<String> whatHelped = const [],
     String? feedback,
   }) async {
     final res = await _dio.post(
       '/api/meditation/$id/checkin',
       data: {
         'feeling': feeling,
-        if (whatHelped != null) 'whatHelped': whatHelped,
+        if (whatHelped.isNotEmpty) 'whatHelped': whatHelped,
         if (feedback != null) 'feedback': feedback,
       },
     );

@@ -5,7 +5,7 @@ class Meditation {
   final String audioUrl;
   final int? duration;
   final String? feeling;      // calmer | same | tense
-  final String? whatHelped;   // breath | body | silence | visualization
+  final List<String> whatHelped; // breath | body | belly_anchor | release | silence | visualization | voice | pacing
   final String? feedback;
   final bool isFavorite;
   final DateTime createdAt;
@@ -17,7 +17,7 @@ class Meditation {
     required this.audioUrl,
     this.duration,
     this.feeling,
-    this.whatHelped,
+    this.whatHelped = const [],
     this.feedback,
     this.isFavorite = false,
     required this.createdAt,
@@ -31,12 +31,22 @@ class Meditation {
       audioUrl: json['audioUrl'] as String,
       duration: json['duration'] as int?,
       feeling: json['feeling'] as String?,
-      whatHelped: json['whatHelped'] as String?,
+      whatHelped: _parseWhatHelped(json['whatHelped']),
       feedback: json['feedback'] as String?,
       isFavorite: (json['isFavorite'] as bool?) ?? false,
       createdAt: DateTime.parse(json['createdAt'] as String),
     );
   }
+}
+
+List<String> _parseWhatHelped(dynamic raw) {
+  if (raw is List) {
+    return raw.whereType<String>().toList(growable: false);
+  }
+  if (raw is String && raw.isNotEmpty) {
+    return [raw];
+  }
+  return const [];
 }
 
 class UserStats {

@@ -8,7 +8,7 @@ const SYSTEM = `You write the closing line of a meditation app's post-session ce
 
 export type CelebrationInputs = {
   feeling: "calmer" | "same" | "tense";
-  whatHelped: string | null;
+  whatHelped: string[] | null;
   totalSessions: number;
   streak: number;
   preferenceSummary: string | null;
@@ -53,7 +53,7 @@ function buildUserMessage(i: CelebrationInputs): string {
     `Total sessions ever: ${i.totalSessions}.`,
     `Current streak: ${i.streak} day${i.streak === 1 ? "" : "s"}.`,
     `Felt: ${feelingLabel(i.feeling)}.`,
-    i.whatHelped ? `What helped most: ${i.whatHelped}.` : `What helped: not specified.`,
+    i.whatHelped && i.whatHelped.length > 0 ? `What helped most: ${i.whatHelped.join(", ")}.` : `What helped: not specified.`,
     i.prompt ? `What they said before the session: "${i.prompt}".` : null,
     i.preferenceSummary ? `Pattern from past sessions: ${i.preferenceSummary}` : null,
   ].filter(Boolean);
@@ -109,7 +109,7 @@ export function fallback(i: CelebrationInputs): string {
   if (i.totalSessions === 1) return pick(FALLBACK_FIRST);
   if (i.feeling === "tense") return pick(FALLBACK_TENSE);
   if (i.streak >= 7) return `${i.streak} ${pick(FALLBACK_STREAK)}`;
-  if (i.feeling === "calmer" && i.whatHelped === "breath") return pick(FALLBACK_CALMER_BREATH);
+  if (i.feeling === "calmer" && i.whatHelped?.includes("breath")) return pick(FALLBACK_CALMER_BREATH);
   if (i.feeling === "calmer") return pick(FALLBACK_CALMER);
   return pick(FALLBACK_DEFAULT);
 }

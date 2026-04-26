@@ -5,6 +5,23 @@ import '../models/meditation.dart';
 import '../services/api_service.dart';
 import '../theme/colors.dart';
 
+class _HelpedOption {
+  final String label;
+  final String value;
+  const _HelpedOption(this.label, this.value);
+}
+
+const _helpedOptions = <_HelpedOption>[
+  _HelpedOption('Breath', 'breath'),
+  _HelpedOption('Body', 'body'),
+  _HelpedOption('Belly anchor', 'belly_anchor'),
+  _HelpedOption('Release', 'release'),
+  _HelpedOption('Silence', 'silence'),
+  _HelpedOption('Visualization', 'visualization'),
+  _HelpedOption('Voice', 'voice'),
+  _HelpedOption('Pacing', 'pacing'),
+];
+
 class PostSessionScreen extends StatefulWidget {
   final String meditationId;
   const PostSessionScreen({super.key, required this.meditationId});
@@ -16,7 +33,7 @@ class PostSessionScreen extends StatefulWidget {
 class _PostSessionScreenState extends State<PostSessionScreen> {
   final _notesController = TextEditingController();
   String? _feeling;
-  String? _whatHelped;
+  final Set<String> _whatHelped = <String>{};
   bool _submitting = false;
   bool _submitted = false;
   UserStats? _statsAfter;
@@ -35,7 +52,7 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
       final result = await apiService.submitCheckin(
         id: widget.meditationId,
         feeling: _feeling!,
-        whatHelped: _whatHelped,
+        whatHelped: _whatHelped.toList(growable: false),
         feedback: _notesController.text.trim().isEmpty
             ? null
             : _notesController.text.trim(),
@@ -112,19 +129,27 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
               if (_feeling != null) ...[
                 const SizedBox(height: 32),
                 Text(
-                  'What helped most?',
+                  'What helped? (pick any)',
                   style: textTheme.headlineMedium?.copyWith(fontSize: 16),
                 ),
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
-                  children: [
-                    _HelpedChip(label: 'Breath', value: 'breath', selected: _whatHelped == 'breath', onTap: () => setState(() => _whatHelped = _whatHelped == 'breath' ? null : 'breath')),
-                    _HelpedChip(label: 'Body', value: 'body', selected: _whatHelped == 'body', onTap: () => setState(() => _whatHelped = _whatHelped == 'body' ? null : 'body')),
-                    _HelpedChip(label: 'Silence', value: 'silence', selected: _whatHelped == 'silence', onTap: () => setState(() => _whatHelped = _whatHelped == 'silence' ? null : 'silence')),
-                    _HelpedChip(label: 'Visualization', value: 'visualization', selected: _whatHelped == 'visualization', onTap: () => setState(() => _whatHelped = _whatHelped == 'visualization' ? null : 'visualization')),
-                  ],
+                  children: _helpedOptions
+                      .map((o) => _HelpedChip(
+                            label: o.label,
+                            value: o.value,
+                            selected: _whatHelped.contains(o.value),
+                            onTap: () => setState(() {
+                              if (_whatHelped.contains(o.value)) {
+                                _whatHelped.remove(o.value);
+                              } else {
+                                _whatHelped.add(o.value);
+                              }
+                            }),
+                          ))
+                      .toList(growable: false),
                 ),
                 const SizedBox(height: 24),
                 TextField(

@@ -30,6 +30,76 @@ const OPUS_DELIVERY_FACTOR = 1.3;
 // Average used for planning only (prompt-side estimate of "how many tags per section").
 const AVG_BREAK_SECONDS = 6;
 
+// Grace's technique library — the somatic + imagery vocabulary the app is
+// modeled on (the source transcripts live in the project memory). The planner
+// selects 1–3 of these per session; the writer pulls from the cue text for
+// any section tagged with the technique. Don't recite the cues verbatim — the
+// writer should phrase in its own voice but keep the concrete physical
+// references and imagery intact.
+const TECHNIQUE_CUES: Record<string, { name: string; cues: string }> = {
+  belly_button_anchor: {
+    name: "Belly button anchor (finger placement)",
+    cues:
+      "The belly button is THE anchor. Invite the listener to gently place a finger on their belly button to draw awareness there. Return to it whenever attention drifts. Phrasings to draw from: \"place a finger on your belly button to help draw your awareness\", \"breathe into your belly button\", \"stay anchored to your belly button\", \"if any sensation comes up, simply notice and keep tuning into the belly button.\"",
+  },
+  layered_breath: {
+    name: "Layered breath (belly → lungs → behind the heart → toes)",
+    cues:
+      "Build the inhale in stages across multiple breaths. First inhale: down into the belly button. Next: filling the lungs and the alveoli. Next: the area behind the heart (the back of the lungs we forget about — \"our lungs go into our backs\"). Optional final inhale: all the way down to the toes. Notice cold air entering the nostrils, warm air on the way out. Optional: hold one or two seconds for the oxygen exchange. Sample phrasing: \"fill your alveoli with rich oxygen\", \"fill the area behind your heart\".",
+  },
+  body_scan_topdown: {
+    name: "Top-down body scan (slow laser pace)",
+    cues:
+      "Slow, laser-pace scan from the top of the head down. Move through regions in order: top of the head and brain → eyes, nostrils, teeth, tongue, lips → back of the neck → shoulders → heart and lungs → arms (shoulders, biceps, triceps, elbows, forearms, wrists, hands — then walk back up) → aortic line down through stomach, liver, intestines, spleen → hips (\"the biggest, strongest bones, vital for bone marrow\") → femurs, thighs, knees, calves, heels, all the way out to each toe. Pause anywhere there's tension and \"send in the troops\" / blood flow. Personal asides welcome (e.g. \"my own shoulders feel tight today\"). Don't try to cover every region in one section — pick a path and move through it slowly.",
+  },
+  brain_drain: {
+    name: "Brain drain valve (base of skull)",
+    cues:
+      "Step one inch into the back of the brain. Notice its texture, color, temperature: sticky, sludgy, dense, spongy, hot, cold, tired, \"needs a king-sized bed.\" Personal asides welcome (\"my brain feels sticky today\"). Thank the brain for working tirelessly. Then walk back to the base of the skull where it meets the spinal cord and unhinge the valves — \"twist cap or full sewage release\" — and let the brain drain down the back of the neck. Clear space for fresh blood flow. Prune dense, darker energies in favor of lighter ones — but make space first.",
+  },
+  cloud_suspension: {
+    name: "Cloud suspension",
+    cues:
+      "The listener is supported by clouds, almost suspended in them. The body can soften because the clouds are holding it. Pair naturally with the inhale-pull / exhale-release pump.",
+  },
+  black_specks_release: {
+    name: "Black specks release pump",
+    cues:
+      "Vivid imagery: on each inhale, pull little scraggly black specks from every part of the body — stress, fear, anxiety, worry, anything heavy or dense — into the lungs. On the exhale, let it travel right back up the throat and out through the nasal passage. A slow, steady pump. Personal asides welcome.",
+  },
+  roots_and_earth_energy: {
+    name: "Roots into earth → white light return",
+    cues:
+      "Two-phase. PHASE 1: from the soles of the feet, imagine roots growing into the earth, proliferating, spreading. Exhale stresses, external pressures, others' picked-up energies, anything unconsciously held — let it travel down through the roots into the ground. Thank the body and the earth. PHASE 2: reverse it. Pull earth's energy — a pulsing white light — back up through the feet, slowly, through calves, knees, thighs, hips, belly button, organs, lungs. Merge it at the heart with love. Bubble it into the shoulders, down the arms to the hands, then up the back of the neck through the brain. Notice how the brain feels now compared to before.",
+  },
+  intention_rehearsal: {
+    name: "Intention + future-self rehearsal",
+    cues:
+      "Ask: what version of yourself are you entering this day/week as? Offer simple first-person affirmations the listener can speak aloud or say internally — e.g. \"I release urgency\", \"I set the intention to live in the moment\", \"I will move slowly and intentionally.\" Rehearse responding to challenges differently — pause, presence, calm. Sample line: \"We are not here to control what happens; we're here to be grounded, present, connected.\" Optional close to this beat: \"that version of you already exists — you just need to step into them.\"",
+  },
+  forceful_exhale_close: {
+    name: "Forceful final breaths",
+    cues:
+      "Three final breaths to close. Each: big deep inhale, hold, then a forceful exhale that empties the lungs all the way — \"all the reserves, let it go.\" Pull anything stagnant or remaining into the lungs and force it out. End with thanking the body for carrying you, optionally \"give it a hug,\" and \"when you're ready, open your eyes.\"",
+  },
+};
+
+function resolveTechniqueCues(keys: string[] | undefined): string {
+  if (!keys || keys.length === 0) return "";
+  const blocks = keys
+    .map((k) => TECHNIQUE_CUES[k])
+    .filter((t): t is { name: string; cues: string } => Boolean(t))
+    .map((t) => `• ${t.name}\n  ${t.cues}`);
+  if (blocks.length === 0) return "";
+  return `\nTECHNIQUE CUES (deploy in this section — phrase in your own voice, keep the concrete physical references and imagery):\n${blocks.join("\n")}\n`;
+}
+
+function techniqueLibraryForPlanner(): string {
+  return Object.entries(TECHNIQUE_CUES)
+    .map(([k, t]) => `  - "${k}": ${t.name}`)
+    .join("\n");
+}
+
 // Spoken fraction per section role — derived in code so Haiku never does ratio math.
 const ROLE_SPOKEN_FRACTION: Record<string, number> = {
   open:            0.85,
@@ -162,6 +232,7 @@ type PlanSection = {
   duration_seconds: number;
   guidance_density: "high" | "medium" | "low" | "silent";
   notes: string;
+  techniques?: string[]; // keys from TECHNIQUE_CUES — 0+ per section
   // derived in code, not from Haiku:
   spoken_seconds: number;
   silence_seconds: number;
@@ -182,13 +253,18 @@ function buildSectionSystem(listenerBlock: string): string {
 
 TONE
 - Warm, intimate, human — as if sitting cross-legged next to the listener.
-- Second person ("you") for direct guidance, "we" for shared moments.
+- Lean on "we" / "we're gonna" / "let's" for shared moments. Use "you" for direct guidance.
 - Short sentences. Conversational. Never clinical, never listy.
+- Vivid, slightly playful imagery beats sterile phrasing — a brain that "needs a king-sized bed" or a "twist cap" valve at the base of the skull lands better than therapy language.
+- Brief personal asides are welcome and humanizing ("my own shoulders feel tight today" / "I'm noticing my brain feels sticky"). Use sparingly — one per section at most.
+- Permissive variants for optional cues: "if you want, you can…" rather than commanding everything.
+- Never use the listener's name. Never say "welcome" or open with a preamble.
 
 BREATH
 - Reference breath as a recurring anchor.
 - Never count breaths.
 - A break after "breathe in" means the listener is actively inhaling. The next words must resolve that breath.
+- Default anchor is the belly button with a finger gently placed on it — return to it whenever attention drifts. Other anchors are fine when the plan calls for them, but belly-button anchoring is the house style.
 
 SILENCE
 - Every sentence ends with exactly one <break time="Xs" /> tag.
@@ -265,6 +341,7 @@ function buildSectionUserPrompt(
   const maxSpokenChars = Math.round(targetSpokenChars * 1.15);
   const targetBreakTags = Math.max(1, Math.round(section.silence_seconds / AVG_BREAK_SECONDS));
   const densityGuide = densityInstructions(section.guidance_density, plan.experienceLevel ?? null);
+  const techniqueCueBlock = resolveTechniqueCues(section.techniques);
 
   return `SESSION
 Technique: ${plan.technique}
@@ -276,7 +353,7 @@ ${prevSectionNotes ? `\nContinuity: previous section covered "${prevSectionNotes
 
 SECTION: ${section.section} (role: ${section.role})
 ${section.notes}
-
+${techniqueCueBlock}
 DENSITY: ${densityGuide}
 
 SPOKEN TARGET: ${targetSpokenChars} characters (this translates to ~${section.spoken_seconds}s of narration).
@@ -291,25 +368,59 @@ ${isFirst ? "This is the opening — start with a spoken sentence immediately, n
 Script with break tags only.`;
 }
 
+function buildScaffoldingBlock(
+  experienceLevel: string | null,
+  sessionNumber: number | null,
+): string {
+  // Only beginners get scaffolded. Intermediate/experienced users see the full library
+  // regardless of session count.
+  if (experienceLevel !== "beginner" || !sessionNumber || sessionNumber > 10) {
+    return "";
+  }
+  if (sessionNumber <= 2) {
+    return `BEGINNER SCAFFOLDING (this is session ${sessionNumber} for a brand-new meditator):
+- Use ONLY these techniques: belly_button_anchor, layered_breath.
+- Do NOT use: body_scan_topdown, brain_drain, roots_and_earth_energy, black_specks_release, cloud_suspension, intention_rehearsal.
+- Keep the session shape simple: open → settle → quiet_breathing → close. Build trust before depth.
+- Language should be the most concrete and grounded version of itself — no abstract imagery yet.
+`;
+  }
+  if (sessionNumber <= 5) {
+    return `BEGINNER SCAFFOLDING (this is session ${sessionNumber} — early days):
+- Allowed techniques: belly_button_anchor, layered_breath, body_scan_topdown (gentle, partial path — not the full body), cloud_suspension, forceful_exhale_close.
+- Do NOT use: brain_drain, roots_and_earth_energy. Save those for later sessions.
+- Keep one active_guidance section at most. Don't stack heavy techniques.
+`;
+  }
+  return `BEGINNER SCAFFOLDING (this is session ${sessionNumber} — building practice):
+- Full technique library is available, but prefer at most ONE heavy technique per session (heavy = brain_drain, roots_and_earth_energy, full body_scan_topdown).
+- Continue to anchor every session in belly_button_anchor.
+`;
+}
+
 async function generatePlan(
   userPrompt: string,
   targetSeconds: number,
   listenerBlock: string,
   timeOfDay: string | null,
+  scaffoldingBlock: string,
 ): Promise<string> {
   const started = Date.now();
   const minutes = Math.round(targetSeconds / 60);
-  const plannerPrompt = `${listenerBlock}You are planning a guided meditation session. Output ONLY valid JSON — no markdown, no explanation.
+  const plannerPrompt = `${listenerBlock}${scaffoldingBlock}You are planning a guided meditation session. Output ONLY valid JSON — no markdown, no explanation.
 
 Listener input: "${userPrompt}"
 Time of day: ${timeOfDay ?? "any time"}
 Target duration: ${minutes} minutes (${targetSeconds} seconds)
 
+TECHNIQUE LIBRARY (the house vocabulary — pick from these by id):
+${techniqueLibraryForPlanner()}
+
 Output this exact JSON:
 {
   "title": "3-5 word evocative title",
-  "technique": "1-2 specific techniques (e.g. box breathing, body scan, noting, visualization)",
-  "anchor": "specific anchor point (e.g. belly button, chest rise, feet on floor)",
+  "technique": "1-2 specific techniques (e.g. body scan, breath awareness, visualization)",
+  "anchor": "specific anchor point — default to 'belly button (finger placement)' unless the listener input clearly suggests another",
   "imagery": "specific release and transformation imagery",
   "arc": [
     {
@@ -317,7 +428,8 @@ Output this exact JSON:
       "role": "open | settle | release | transformation | quiet_breathing | return | close",
       "duration_seconds": 0,
       "guidance_density": "high | medium | low | silent",
-      "notes": "what specifically happens — be concrete, 1 sentence"
+      "notes": "what specifically happens — be concrete, 1 sentence",
+      "techniques": ["technique-id"]
     }
   ]
 }
@@ -329,7 +441,19 @@ Rules:
 - Do NOT use the role "silent". Use "quiet_breathing" for the quiet section.
 - open → high density. quiet_breathing → low or silent density. close → medium density.
 - The quiet_breathing section should usually be 25-40% of the total session, not more.
-- Prefer functional section names, not poetic ones.`;
+- Prefer functional section names, not poetic ones.
+
+TECHNIQUE SELECTION RULES (important):
+- Pick 1–3 distinct techniques across the whole session. Do not stuff every section.
+- "belly_button_anchor" is the house anchor — include it on the open or settle section by default.
+- "layered_breath" pairs naturally with open or settle.
+- "body_scan_topdown" is a full active_guidance section on its own.
+- "brain_drain" is its own active_guidance or release beat — don't combine with body scan in the same section.
+- "roots_and_earth_energy" is a longer active_guidance section (both phases) — only fits sessions ≥ 6 minutes.
+- "intention_rehearsal" suits return/close sections, especially morning or weekly-reset sessions.
+- "forceful_exhale_close" suits the final close section.
+- Vary the technique mix across sessions — do not default to the same combination every time.
+- A section may have an empty techniques array if it's pure quiet breathing or doesn't call for one.`;
 
   const res = await anthropic.messages.create({
     model: PLANNER_MODEL,
@@ -406,7 +530,7 @@ export async function generateScript(
   userPrompt: string,
   targetSeconds: number,
   listenerContext: ListenerContext,
-  options: { timeOfDay?: string | null } = {},
+  options: { timeOfDay?: string | null; sessionNumber?: number | null } = {},
 ): Promise<{ script: string; title: string }> {
   const started = Date.now();
   const listenerBlock = buildListenerContextBlock(listenerContext);
@@ -421,10 +545,19 @@ export async function generateScript(
           : hour < 21 ? "evening" : "night";
       })();
 
-  log("plan", "generating", { targetSeconds, timeOfDay, promptLen: userPrompt.length });
+  const sessionNumber = options.sessionNumber ?? null;
+  const scaffoldingBlock = buildScaffoldingBlock(listenerContext.experienceLevel, sessionNumber);
+
+  log("plan", "generating", {
+    targetSeconds,
+    timeOfDay,
+    promptLen: userPrompt.length,
+    sessionNumber,
+    scaffolded: scaffoldingBlock.length > 0,
+  });
 
   // Phase 1: Haiku generates a plan with per-section spoken/silence targets
-  const planText = await generatePlan(userPrompt, targetSeconds, listenerBlock, timeOfDay);
+  const planText = await generatePlan(userPrompt, targetSeconds, listenerBlock, timeOfDay, scaffoldingBlock);
 
   let plan: ParsedPlan;
   try {
@@ -433,9 +566,13 @@ export async function generateScript(
     raw.arc = (raw.arc ?? []).map((s: PlanSection) => {
       const normalizedRole = s.role === "silent" ? "quiet_breathing" : s.role;
       const spokenSecs = sectionSpokenSeconds(normalizedRole, s.duration_seconds, listenerContext.experienceLevel);
+      const techniques = Array.isArray(s.techniques)
+        ? s.techniques.filter((k) => typeof k === "string" && k in TECHNIQUE_CUES)
+        : [];
       return {
         ...s,
         role: normalizedRole,
+        techniques,
         spoken_seconds: spokenSecs,
         silence_seconds: Math.max(2, s.duration_seconds - spokenSecs),
       };
@@ -448,7 +585,7 @@ export async function generateScript(
 
   log("write", "generating sections in parallel", {
     sections: plan.arc.length,
-    arc: plan.arc.map(s => ({ role: s.role, duration: s.duration_seconds, spoken: s.spoken_seconds, silence: s.silence_seconds })),
+    arc: plan.arc.map(s => ({ role: s.role, duration: s.duration_seconds, spoken: s.spoken_seconds, silence: s.silence_seconds, techniques: s.techniques ?? [] })),
   });
 
   // Phase 2: Write all sections in parallel. Continuity cues come from plan.arc[i-1].notes
@@ -640,13 +777,13 @@ function pcmToMp3(pcm: Buffer): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const ff = spawn(ffmpegPath.path, [
       "-f", "s16le", "-ar", String(PCM_SAMPLE_RATE), "-ac", "1", "-i", "pipe:0",
-      // EBU R128 loudness normalization. Targets -20 LUFS integrated loudness
-      // (notably quieter than the -16 podcast standard — meditation benefits
-      // from a softer default level). True peak capped at -1.5 dBFS for
-      // headroom. Single-pass is less accurate than two-pass but fine here —
-      // narrow dynamic range anyway. Adds ~4s to audio synthesis on a 5-min
-      // session; worth it for consistent loudness across voices.
-      "-af", "loudnorm=I=-20:TP=-1.5:LRA=11",
+      // EBU R128 loudness normalization. Targets -22 LUFS integrated loudness
+      // (ambient/spa-app range — meditation benefits from a soft default level
+      // that respects whatever the user's system volume is set to). True peak
+      // capped at -1.5 dBFS for headroom. Single-pass is less accurate than
+      // two-pass but fine here — narrow dynamic range anyway. Adds ~4s to
+      // audio synthesis on a 5-min session; worth it for consistent loudness.
+      "-af", "loudnorm=I=-22:TP=-1.5:LRA=11",
       "-codec:a", "libmp3lame", "-b:a", "192k", "-f", "mp3", "pipe:1",
     ]);
     const out: Buffer[] = [];
@@ -835,12 +972,16 @@ export async function refreshPreferenceSummary(userId: string): Promise<void> {
 
   const helpedCounts: Record<string, number> = {};
   for (const s of sessions) {
-    if (s.whatHelped) helpedCounts[s.whatHelped] = (helpedCounts[s.whatHelped] ?? 0) + 1;
+    if (s.whatHelped) {
+      for (const tag of s.whatHelped) {
+        helpedCounts[tag] = (helpedCounts[tag] ?? 0) + 1;
+      }
+    }
   }
   const topHelped = Object.entries(helpedCounts)
     .sort((a, b) => b[1] - a[1])
     .map(([k]) => k)
-    .slice(0, 2);
+    .slice(0, 3);
 
   const mornings = sessions.filter((s) => new Date(s.createdAt).getHours() < 12).length;
   const afternoons = sessions.filter((s) => { const h = new Date(s.createdAt).getHours(); return h >= 12 && h < 17; }).length;
@@ -862,7 +1003,7 @@ ${topHelped.length > 0 ? `- What helps most: ${topHelped.join(", ")}` : ""}`;
   const blocks = sessions.slice(0, 20).map((s, i) => {
     const days = Math.max(0, Math.floor((now - new Date(s.createdAt).getTime()) / 86_400_000));
     const recency = i < 10 ? " (RECENT)" : "";
-    return `[Session ${i + 1} · ${days}d ago · feeling: ${s.feeling ?? "?"}${s.whatHelped ? ` · helped: ${s.whatHelped}` : ""}${recency}] "${s.prompt}"
+    return `[Session ${i + 1} · ${days}d ago · feeling: ${s.feeling ?? "?"}${s.whatHelped && s.whatHelped.length > 0 ? ` · helped: ${s.whatHelped.join(", ")}` : ""}${recency}] "${s.prompt}"
   Note: ${s.feedback?.trim() || "(none)"}`;
   });
 

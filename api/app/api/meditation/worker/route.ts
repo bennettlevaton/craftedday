@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import { handleCallback } from "@vercel/queue";
 import { db } from "@/lib/db";
 import { dailySessions, meditationJobs, meditations } from "@/db/schema";
@@ -43,6 +43,15 @@ export const POST = handleCallback<QueueJobMessage>(
       const t = { jobStart: Date.now(), scriptMs: 0, audioMs: 0, uploadMs: 0, dbMs: 0 };
       const profile = JSON.parse(job.profileSnapshot);
 
+      // sessionNumber = the listener's Nth meditation generation (1-indexed). Drives
+      // beginner scaffolding in the planner. Counted at generation time so retries
+      // of the same job don't re-increment.
+      const [{ value: priorCount } = { value: 0 }] = await db
+        .select({ value: count() })
+        .from(meditations)
+        .where(eq(meditations.userId, job.userId));
+      const sessionNumber = priorCount + 1;
+
       let ts = Date.now();
       const { script, title } = await generateScript(
         job.prompt,
@@ -61,6 +70,7 @@ export const POST = handleCallback<QueueJobMessage>(
               : typeof profile.timeOfDay === "string"
                 ? profile.timeOfDay
                 : undefined,
+          sessionNumber,
         },
       );
       t.scriptMs = Date.now() - ts;

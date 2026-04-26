@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { meditations, userProfiles } from "@/db/schema";
@@ -12,11 +12,20 @@ import { log } from "@/lib/log";
 export const runtime = "nodejs";
 
 const VALID_FEELINGS = new Set(["calmer", "same", "tense"]);
-const VALID_HELPED = new Set(["breath", "body", "silence", "visualization"]);
+const VALID_HELPED = new Set([
+  "breath",
+  "body",
+  "belly_anchor",
+  "release",
+  "silence",
+  "visualization",
+  "voice",
+  "pacing",
+]);
 
 type Body = {
   feeling?: string;
-  whatHelped?: string;
+  whatHelped?: string[] | string | null;
   feedback?: string;
 };
 
@@ -30,13 +39,21 @@ export async function POST(
     const body = (await req.json()) as Body;
 
     const feeling = body.feeling;
-    const whatHelped = body.whatHelped ?? null;
+    // Accept array (new clients) or single string (legacy clients) — normalize to array.
+    const rawHelped = body.whatHelped;
+    const helpedTags: string[] = Array.isArray(rawHelped)
+      ? rawHelped
+      : typeof rawHelped === "string" && rawHelped
+        ? [rawHelped]
+        : [];
+    const dedupedHelped = Array.from(new Set(helpedTags));
+    const whatHelped = dedupedHelped.length > 0 ? dedupedHelped : null;
     const feedback = body.feedback?.trim() ?? null;
 
     if (!feeling || !VALID_FEELINGS.has(feeling)) {
       return NextResponse.json({ error: "invalid feeling" }, { status: 400 });
     }
-    if (whatHelped && !VALID_HELPED.has(whatHelped)) {
+    if (whatHelped && whatHelped.some((t) => !VALID_HELPED.has(t))) {
       return NextResponse.json({ error: "invalid whatHelped" }, { status: 400 });
     }
 
@@ -108,7 +125,12 @@ export async function POST(
 
     log("checkin", "total", { ms: since() });
 
-    void refreshPreferenceSummary(userId).catch(() => {});
+    // after() keeps the function alive past the response so this Sonnet call
+    // (2-5s) actually completes. Plain fire-and-forget would get killed when
+    // the runtime freezes after sending the response.
+    after(() => refreshPreferenceSummary(userId).catch((err) => {
+      logError("checkin:refreshSummary", err);
+    }));
 
     return NextResponse.json({
       ok: true,

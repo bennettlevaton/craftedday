@@ -17,7 +17,7 @@ class _MeditationDetailScreenState extends State<MeditationDetailScreen> {
   Meditation? _meditation;
   bool _loading = true;
   String? _feeling;
-  String? _whatHelped;
+  final Set<String> _whatHelped = <String>{};
   bool _submitting = false;
 
   @override
@@ -64,7 +64,7 @@ class _MeditationDetailScreenState extends State<MeditationDetailScreen> {
       await apiService.submitCheckin(
         id: widget.id,
         feeling: _feeling!,
-        whatHelped: _whatHelped,
+        whatHelped: _whatHelped.toList(growable: false),
         feedback: _notesController.text.trim().isEmpty
             ? null
             : _notesController.text.trim(),
@@ -140,8 +140,8 @@ class _MeditationDetailScreenState extends State<MeditationDetailScreen> {
                         // Already checked in — show read-only
                         if (m.feeling != null) ...[
                           _InfoRow(label: 'Feeling', value: _formatFeeling(m.feeling!)),
-                          if (m.whatHelped != null)
-                            _InfoRow(label: 'What helped', value: _capitalize(m.whatHelped!)),
+                          if (m.whatHelped.isNotEmpty)
+                            _InfoRow(label: 'What helped', value: m.whatHelped.map(_formatHelped).join(', ')),
                           if (m.feedback != null && m.feedback!.isNotEmpty)
                             _InfoRow(label: 'Note', value: m.feedback!),
                         ],
@@ -160,17 +160,24 @@ class _MeditationDetailScreenState extends State<MeditationDetailScreen> {
                           ),
                           if (_feeling != null) ...[
                             const SizedBox(height: 20),
-                            Text('What helped?', style: textTheme.headlineMedium?.copyWith(fontSize: 16)),
+                            Text('What helped? (pick any)', style: textTheme.headlineMedium?.copyWith(fontSize: 16)),
                             const SizedBox(height: 12),
                             Wrap(
                               spacing: 10,
                               runSpacing: 10,
-                              children: [
-                                _Chip(label: 'Breath', selected: _whatHelped == 'breath', onTap: () => setState(() => _whatHelped = _whatHelped == 'breath' ? null : 'breath')),
-                                _Chip(label: 'Body', selected: _whatHelped == 'body', onTap: () => setState(() => _whatHelped = _whatHelped == 'body' ? null : 'body')),
-                                _Chip(label: 'Silence', selected: _whatHelped == 'silence', onTap: () => setState(() => _whatHelped = _whatHelped == 'silence' ? null : 'silence')),
-                                _Chip(label: 'Visualization', selected: _whatHelped == 'visualization', onTap: () => setState(() => _whatHelped = _whatHelped == 'visualization' ? null : 'visualization')),
-                              ],
+                              children: _detailHelpedOptions
+                                  .map((o) => _Chip(
+                                        label: o.$1,
+                                        selected: _whatHelped.contains(o.$2),
+                                        onTap: () => setState(() {
+                                          if (_whatHelped.contains(o.$2)) {
+                                            _whatHelped.remove(o.$2);
+                                          } else {
+                                            _whatHelped.add(o.$2);
+                                          }
+                                        }),
+                                      ))
+                                  .toList(growable: false),
                             ),
                             const SizedBox(height: 20),
                             TextField(
@@ -212,8 +219,29 @@ class _MeditationDetailScreenState extends State<MeditationDetailScreen> {
     _ => feeling,
   };
 
-  String _capitalize(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+  String _formatHelped(String tag) => switch (tag) {
+    'breath' => 'Breath',
+    'body' => 'Body',
+    'belly_anchor' => 'Belly anchor',
+    'release' => 'Release',
+    'silence' => 'Silence',
+    'visualization' => 'Visualization',
+    'voice' => 'Voice',
+    'pacing' => 'Pacing',
+    _ => tag,
+  };
 }
+
+const _detailHelpedOptions = <(String, String)>[
+  ('Breath', 'breath'),
+  ('Body', 'body'),
+  ('Belly anchor', 'belly_anchor'),
+  ('Release', 'release'),
+  ('Silence', 'silence'),
+  ('Visualization', 'visualization'),
+  ('Voice', 'voice'),
+  ('Pacing', 'pacing'),
+];
 
 class _InfoRow extends StatelessWidget {
   final String label;

@@ -2,6 +2,7 @@ import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/meditation.dart';
 import '../services/api_service.dart';
 import '../theme/colors.dart';
@@ -100,20 +101,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             primaryGoalCustom: result.custom,
           ));
     }
-  }
-
-  Future<void> _editVoice() async {
-    final result = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.background,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) => _VoiceSheet(initial: _me?.voiceGender ?? 'female'),
-    );
-    if (result == null) return;
-    await _persist(() => apiService.updateProfile(voiceGender: result));
-    if (mounted) setState(() => _me = _me?.copyWith(voiceGender: result));
   }
 
   Future<void> _editNotificationHour() async {
@@ -216,15 +203,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: me == null ? null : _editGoals,
             ),
             _EditableRow(
-              label: 'Voice',
-              value: _formatVoice(me?.voiceGender),
-              onTap: me == null ? null : _editVoice,
-            ),
-            _EditableRow(
               label: 'Reminder time',
               value: _formatHour(me?.notificationHour ?? 8),
               onTap: me == null ? null : _editNotificationHour,
             ),
+            const SizedBox(height: 32),
+            const _GraceCredit(),
             const SizedBox(height: 48),
             ClerkAuthBuilder(
               builder: (context, authState) => GestureDetector(
@@ -263,14 +247,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'beginner' => 'New to it',
       'intermediate' => 'Some experience',
       'experienced' => 'Experienced',
-      _ => '—',
-    };
-  }
-
-  String _formatVoice(String? v) {
-    return switch (v) {
-      'female' => 'Female',
-      'male' => 'Male',
       _ => '—',
     };
   }
@@ -840,43 +816,54 @@ class _NotificationHourSheetState extends State<_NotificationHourSheet> {
   }
 }
 
-class _VoiceSheet extends StatefulWidget {
-  final String initial;
-  const _VoiceSheet({required this.initial});
+class _GraceCredit extends StatelessWidget {
+  const _GraceCredit();
 
-  @override
-  State<_VoiceSheet> createState() => _VoiceSheetState();
-}
-
-class _VoiceSheetState extends State<_VoiceSheet> {
-  late String _selected;
-
-  @override
-  void initState() {
-    super.initState();
-    _selected = widget.initial;
+  Future<void> _openInstagram() async {
+    final uri = Uri.parse('https://instagram.com/thegracieglow');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
   Widget build(BuildContext context) {
-    return _SheetScaffold(
-      title: 'Voice',
-      onSave: () => Navigator.of(context).pop(_selected),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        children: [
-          _Chip(
-            label: 'Female',
-            selected: _selected == 'female',
-            onTap: () => setState(() => _selected = 'female'),
-          ),
-          _Chip(
-            label: 'Male',
-            selected: _selected == 'male',
-            onTap: () => setState(() => _selected = 'male'),
-          ),
-        ],
+    return GestureDetector(
+      onTap: _openInstagram,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  'Voiced by Grace',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                ),
+                Text(
+                  '@thegracieglow',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppColors.accent,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Grace inspires this app and shapes the meditation practice you hear. Every session is built around her work.",
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                    height: 1.5,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }

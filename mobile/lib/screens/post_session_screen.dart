@@ -20,6 +20,7 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
   bool _submitting = false;
   bool _submitted = false;
   UserStats? _statsAfter;
+  String? _celebration;
 
   @override
   void dispose() {
@@ -31,7 +32,7 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
     if (_feeling == null || _submitting) return;
     setState(() => _submitting = true);
     try {
-      await apiService.submitCheckin(
+      final result = await apiService.submitCheckin(
         id: widget.meditationId,
         feeling: _feeling!,
         whatHelped: _whatHelped,
@@ -39,18 +40,13 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
             ? null
             : _notesController.text.trim(),
       );
-      UserStats? stats;
-      try {
-        stats = await apiService.getStats();
-      } catch (_) {
-        // Celebration still works without stats.
-      }
       if (!mounted) return;
       HapticFeedback.mediumImpact();
       setState(() {
         _submitting = false;
         _submitted = true;
-        _statsAfter = stats;
+        _statsAfter = result.stats;
+        _celebration = result.celebration;
       });
     } catch (e) {
       if (!mounted) return;
@@ -66,7 +62,10 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
     final textTheme = Theme.of(context).textTheme;
 
     if (_submitted) {
-      return _CelebrationView(stats: _statsAfter);
+      return _CelebrationView(
+        stats: _statsAfter,
+        celebration: _celebration,
+      );
     }
 
     return Scaffold(
@@ -168,7 +167,8 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
 
 class _CelebrationView extends StatelessWidget {
   final UserStats? stats;
-  const _CelebrationView({required this.stats});
+  final String? celebration;
+  const _CelebrationView({required this.stats, required this.celebration});
 
   @override
   Widget build(BuildContext context) {
@@ -177,6 +177,9 @@ class _CelebrationView extends StatelessWidget {
     final streakLine = streak >= 1
         ? (streak == 1 ? '1 day streak' : '$streak day streak')
         : null;
+    final closingLine = celebration?.trim().isNotEmpty == true
+        ? celebration!
+        : 'See you tomorrow.';
 
     return Scaffold(
       body: SafeArea(
@@ -209,7 +212,7 @@ class _CelebrationView extends StatelessWidget {
                 const SizedBox(height: 20),
               ],
               Text(
-                'See you tomorrow.',
+                closingLine,
                 style: textTheme.bodyLarge?.copyWith(
                   color: AppColors.textSecondary,
                 ),

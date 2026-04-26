@@ -61,3 +61,17 @@ class UserStats {
     );
   }
 }
+
+class CheckinResult {
+  final String celebration;
+  final UserStats stats;
+
+  const CheckinResult({required this.celebration, required this.stats});
+
+  factory CheckinResult.fromJson(Map<String, dynamic> json) {
+    return CheckinResult(
+      celebration: json['celebration'] as String,
+      stats: UserStats.fromJson(json['stats'] as Map<String, dynamic>),
+    );
+  }
+}

@@ -286,32 +286,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.history, size: 22),
-          color: AppColors.textSecondary,
-          onPressed: _loading ? null : () => context.push('/history'),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.support_outlined, size: 22),
-            color: AppColors.textSecondary,
-            tooltip: 'Contact support',
-            onPressed: _loading
-                ? null
-                : () => SupportService.open(
-                      context: context,
-                      subject: 'CraftedDay support',
-                    ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.person_outline, size: 22),
-            color: AppColors.textSecondary,
-            onPressed: _loading ? null : () => context.push('/profile'),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
+      appBar: _loading
+          ? null
+          : AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.history, size: 22),
+                color: AppColors.textSecondary,
+                onPressed: () => context.push('/history'),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.support_outlined, size: 22),
+                  color: AppColors.textSecondary,
+                  tooltip: 'Contact support',
+                  onPressed: () => SupportService.open(
+                    context: context,
+                    subject: 'CraftedDay support',
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.person_outline, size: 22),
+                  color: AppColors.textSecondary,
+                  onPressed: () => context.push('/profile'),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ),
       body: _loading
           ? _LoadingOverlay(onDismiss: _abandonLoading)
           : SafeArea(

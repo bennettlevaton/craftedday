@@ -153,13 +153,13 @@ class ApiService {
     throw TimeoutException('Meditation generation timed out', const Duration(minutes: 10));
   }
 
-  Future<void> submitCheckin({
+  Future<CheckinResult> submitCheckin({
     required String id,
     required String feeling,
     String? whatHelped,
     String? feedback,
   }) async {
-    await _dio.post(
+    final res = await _dio.post(
       '/api/meditation/$id/checkin',
       data: {
         'feeling': feeling,
@@ -167,6 +167,7 @@ class ApiService {
         if (feedback != null) 'feedback': feedback,
       },
     );
+    return CheckinResult.fromJson(res.data as Map<String, dynamic>);
   }
 
   Future<void> logListen({

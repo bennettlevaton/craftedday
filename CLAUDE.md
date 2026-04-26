@@ -17,7 +17,7 @@ AI-powered personalized meditation app. User describes their current mood/situat
 - [x] Create a Service ID for Clerk Apple OAuth
 - [x] Generate a Sign In with Apple Key (.p8 file)
 - [x] Create distribution provisioning profile
-- [] Create App Store Connect record for CraftedDay
+- [x] Create App Store Connect record for CraftedDay
 
 ### 2. Xcode
 - [x] **Add "Sign In with Apple" capability** — Runner target → Signing & Capabilities → + Capability
@@ -54,7 +54,7 @@ AI-powered personalized meditation app. User describes their current mood/situat
   ```
 
 ### 6. Vercel Production
-- [ ] Set `CRON_SECRET` to a strong random string (not `craftedday-cron-2026`)
+- [x] Set `CRON_SECRET` to a strong random string (not `craftedday-cron-2026`)
 - [x] Wire `craftedday.com` custom domain
 - [x] Confirm all env vars set (Clerk live keys, etc.)
 - [x] Verify cron runs at 5am UTC (`/api/cron/generate-daily`)
@@ -70,11 +70,11 @@ AI-powered personalized meditation app. User describes their current mood/situat
 - [x] Support email address
 
 ### 9. App Store Connect Listing
-- [ ] App name, subtitle, description, keywords
-- [ ] Screenshots (6.9" iPhone required)
-- [ ] App preview video (optional)
-- [ ] Age rating (likely 4+)
-- [ ] Support URL + Privacy Policy URL
+- [x] App name, subtitle, description, keywords
+- [x] Screenshots (6.9" iPhone required)
+- [n/a] App preview video (optional)
+- [x] Age rating (likely 4+)
+- [x] Support URL + Privacy Policy URL
 
 ### 10. Flutter `.env` (production)
 ```
@@ -83,12 +83,12 @@ CLERK_PUBLISHABLE_KEY=pk_live_...
 ```
 
 ### 11. Final QA
-- [ ] Full auth flow on real device (Apple + Google)
-- [ ] Generate meditation → check-in → history
-- [ ] Daily session card appears after cron runs
+- [x] Full auth flow on real device (Apple + Google)
+- [x] Generate meditation → check-in → history
+- [x] Daily session card appears after cron runs
 - [ ] Notifications fire at 3pm, cancel after session
-- [ ] Profile edits persist
-- [ ] Sign out + sign back in
+- [x] Profile edits persist
+- [x] Sign out + sign back in
 - [ ] Subscriptions gate correctly
 
 **Rough timeline:** 2-3 weeks moving steadily. App Store review (~7 days) is the long pole.

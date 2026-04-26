@@ -20,10 +20,11 @@ if (!IN_WORLD_API) {
   process.exit(1);
 }
 
-const VOICES = {
-  female: "Luna",
-  male: "Gareth",
-} as const;
+// Source of truth for the runtime voice picks — keep cues in sync with the
+// voices users actually hear during their session. Otherwise the loading
+// screen sounds like a different narrator than the meditation.
+import { INWORLD_VOICES } from "../api/lib/inworld";
+const VOICES = INWORLD_VOICES;
 
 // Slower than the meditation pace — cues are short, slowing them lets each
 // breath instruction breathe (heh).
@@ -82,7 +83,10 @@ async function generateCue(text: string, voiceId: string): Promise<Buffer> {
 async function main() {
   const root = join(__dirname, "..", "mobile", "assets", "audio", "breathing");
 
-  for (const gender of ["female", "male"] as const) {
+  // Male voice is deprecated for now (toggle hidden in profile). Skipping its
+  // regeneration avoids spending Inworld minutes on assets nothing reads.
+  // Re-add "male" to this array if/when the voice toggle is restored.
+  for (const gender of ["female"] as const) {
     const dir = join(root, gender);
     mkdirSync(dir, { recursive: true });
     console.log(`\n→ Generating ${gender} voice (${CUES.length} cues)...`);

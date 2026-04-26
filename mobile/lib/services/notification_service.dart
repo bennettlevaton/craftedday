@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -16,6 +17,15 @@ class NotificationService {
   Future<void> initialize() async {
     if (_initialized) return;
     tz.initializeTimeZones();
+    // tz.initializeTimeZones() loads the IANA database but leaves tz.local at
+    // UTC. Without setting it explicitly, tz.TZDateTime(tz.local, ...) below
+    // would schedule notifications in UTC — e.g. 8am UTC = midnight PT.
+    try {
+      final name = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(name));
+    } catch (_) {
+      // Fall back to UTC if detection fails — better than crashing.
+    }
     const ios = DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,

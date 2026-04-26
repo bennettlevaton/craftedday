@@ -22,7 +22,7 @@ import { config } from "dotenv";
 // the pipeline modules dynamically inside main().
 config({ path: ".env.local" });
 
-const DURATION_SECONDS = 600;
+const DURATION_SECONDS = 300;
 const TITLE = "Your first session";
 const PROMPT =
   "A welcoming first meditation — a gentle invitation into the practice. " +
@@ -72,15 +72,19 @@ async function main() {
     PROMPT,
     DURATION_SECONDS,
     LISTENER_CONTEXT,
-    { timeOfDay: null }, // universal — no greeting tied to time of day
+    {
+      timeOfDay: null,    // universal — no greeting tied to time of day
+      sessionNumber: 1,   // welcome IS the first session — engage strictest beginner scaffolding
+    },
   );
   console.log(`  Script ready (${script.length} chars, title: "${title}")`);
 
-  // Sequential, not parallel — the app's pipeline already saturates the
-  // ElevenLabs concurrency cap (5 on Starter) within a single voice render.
-  // Running both voices at once would trip rate_limit_error.
+  // Male voice is deprecated for now (toggle hidden in profile). Render only
+  // the female track and point male at the same URL so any legacy user with
+  // voiceGender="male" still gets a working welcome instead of falling through
+  // to the slow live-pipeline path in daily.ts.
   const femaleUrl = await renderAndUpload("female", script);
-  const maleUrl = await renderAndUpload("male", script);
+  const maleUrl = femaleUrl;
 
   const data = {
     title: TITLE,

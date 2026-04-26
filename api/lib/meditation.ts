@@ -354,7 +354,18 @@ async function writeSectionScript(
   const response = await anthropic.messages.create({
     model: WRITER_MODEL,
     max_tokens: 4000,
-    system: sectionSystem,
+    // Cache the system prompt — it's identical across the 5 parallel section
+    // calls in this generation, and rarely changes session-to-session. First
+    // call writes the cache (~125% input rate, one-time); subsequent calls
+    // read it (~10% input rate). Saves ~$0.01/session within a single run,
+    // more if another session fires within the 5-minute cache TTL.
+    system: [
+      {
+        type: "text",
+        text: sectionSystem,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     messages: [{
       role: "user",
       content: buildSectionUserPrompt(section, plan, userPrompt, timeOfDay, isFirst, prevSectionNotes),
@@ -371,6 +382,8 @@ async function writeSectionScript(
     spokenSeconds: section.spoken_seconds,
     silenceSeconds: section.silence_seconds,
     outputTokens: response.usage.output_tokens,
+    cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
+    cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
   });
   return text;
 }

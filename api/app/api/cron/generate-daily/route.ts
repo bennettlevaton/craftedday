@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 
   log("cron:daily", "users to process", { count: allUsers.length });
 
-  const counts = { enqueued: 0, skipped: 0, unsubscribed: 0, errors: 0 };
+  const counts = { enqueued: 0, reused: 0, skipped: 0, unsubscribed: 0, errors: 0 };
 
   await Promise.all(
     allUsers.map(async (user) => {
@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
 
         const result = await enqueueDailyForUser(user.userId);
         if (result.enqueued) counts.enqueued++;
+        else if (result.reason === "reused_yesterday") counts.reused++;
         else counts.skipped++;
       } catch (err) {
         counts.errors++;

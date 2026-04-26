@@ -12,7 +12,7 @@
         {
           "type": "queue/v2beta",
           "topic": "meditation-generate",
-          "maxConcurrency": 1
+          "maxConcurrency": 2
         }
       ]
     }

@@ -640,6 +640,13 @@ function pcmToMp3(pcm: Buffer): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const ff = spawn(ffmpegPath.path, [
       "-f", "s16le", "-ar", String(PCM_SAMPLE_RATE), "-ac", "1", "-i", "pipe:0",
+      // EBU R128 loudness normalization. Targets -20 LUFS integrated loudness
+      // (notably quieter than the -16 podcast standard — meditation benefits
+      // from a softer default level). True peak capped at -1.5 dBFS for
+      // headroom. Single-pass is less accurate than two-pass but fine here —
+      // narrow dynamic range anyway. Adds ~4s to audio synthesis on a 5-min
+      // session; worth it for consistent loudness across voices.
+      "-af", "loudnorm=I=-20:TP=-1.5:LRA=11",
       "-codec:a", "libmp3lame", "-b:a", "192k", "-f", "mp3", "pipe:1",
     ]);
     const out: Buffer[] = [];

@@ -14,7 +14,9 @@ const INWORLD_MODEL = "inworld-tts-1.5-max";
 // Starting voice picks for testing. Iterate after listening — Inworld has a
 // catalog and supports voice cloning from a 5–10s reference if needed.
 export const INWORLD_VOICES = {
-  female: "Deborah",
+  // Custom-cloned voice (Grace) — your differentiator. Real human reference,
+  // not a catalog preset.
+  female: "default-ikq5xlu9d9xvn81vuvxgfw__grace",
   male: "Damon",
 } as const;
 

@@ -11,11 +11,19 @@ const PLANNER_MODEL = "claude-haiku-4-5";
 const WRITER_MODEL  = "claude-opus-4-7";
 const SUMMARY_MODEL = "claude-sonnet-4-6";
 
-// Single observed rate — chars of spoken text produced per second of actual narration
-// at voice speed 0.85 with eleven_v3. Calibrated empirically across multiple runs
-// (observedSpokenCharsPerSec landed at 8–10 consistently). Used for BOTH the
-// generation target asked of Opus and the post-hoc duration estimate.
-const SPOKEN_CHARS_PER_SEC = 10;
+// Single observed rate — chars of spoken text produced per second of actual
+// narration at speaking_rate 0.85 with Inworld TTS-1.5-Max. Calibrated from
+// production runs (observedSpokenCharsPerSec landed at 12.79). Used for BOTH
+// the generation target asked of Opus and the post-hoc duration estimate.
+// Was 10 for ElevenLabs v3/Turbo — Inworld is denser per second.
+const SPOKEN_CHARS_PER_SEC = 13;
+
+// Opus consistently writes ~70% of the char count we ask for (LLMs can't
+// reliably count chars — confirmed by length-control research). Inflate the
+// target we send to Opus by this factor so the actual delivery lands close
+// to our true target. Tune up if we still see under-delivery, tune down if
+// we start getting over-delivery (which would compress the silence harder).
+const OPUS_DELIVERY_FACTOR = 1.3;
 
 // We own silence ourselves — break tags never reach the TTS engine. So we honor
 // their written duration exactly when estimating and when rendering silent PCM.
@@ -55,9 +63,11 @@ function sectionSpokenSeconds(
   const normalizedRole = role === "silent" ? "quiet_breathing" : role;
   const base = ROLE_SPOKEN_FRACTION[normalizedRole] ?? 0.65;
   // Per-role modifier that produces these overall-session ratios once weighted
-  // by section durations: beginner ≈ 60% spoken · intermediate ≈ 50% · experienced ≈ 40%.
+  // by section durations: beginner ≈ 70% spoken · intermediate ≈ 50% · experienced ≈ 40%.
+  // Beginners need more guidance (less silence) — research-backed and confirmed
+  // by every major meditation app's beginner content trending 65-75% spoken.
   const modifier = experienceLevel === "experienced" ? -0.10
-    : experienceLevel === "beginner" ? +0.10
+    : experienceLevel === "beginner" ? +0.20
     : 0;
   const minSpoken = Math.min(
     durationSeconds - 4,
@@ -246,7 +256,11 @@ function buildSectionUserPrompt(
   isFirst: boolean,
   prevSectionNotes: string | null,
 ): string {
-  const targetSpokenChars = Math.round(section.spoken_seconds * SPOKEN_CHARS_PER_SEC);
+  // Inflate the target sent to Opus to compensate for systematic under-delivery.
+  // Opus typically writes ~70% of asked; inflating by ~1.3× lands us close to
+  // the true target without lying about the spec elsewhere in the codebase.
+  const trueTargetChars = Math.round(section.spoken_seconds * SPOKEN_CHARS_PER_SEC);
+  const targetSpokenChars = Math.round(trueTargetChars * OPUS_DELIVERY_FACTOR);
   const minSpokenChars = Math.round(targetSpokenChars * 0.9);
   const maxSpokenChars = Math.round(targetSpokenChars * 1.15);
   const targetBreakTags = Math.max(1, Math.round(section.silence_seconds / AVG_BREAK_SECONDS));
@@ -490,17 +504,20 @@ function clampBreakTags(script: string): string {
 const MIN_TAIL_SILENCE_SECONDS = 6;
 
 // Parallelism for TTS requests — capped by Inworld's concurrent-request limit
-// for your plan. Override via TTS_CONCURRENCY env var when you upgrade.
+// for your plan. With sentence-per-chunk granularity (~30 chunks/session), TTS
+// is ~40% of total generation time, so concurrency directly cuts wall time.
+// 10 = full Inworld self-serve cap × queue concurrency 1.
 const TTS_CONCURRENCY = Math.max(
   1,
-  parseInt(process.env.TTS_CONCURRENCY ?? "5", 10) || 5,
+  parseInt(process.env.TTS_CONCURRENCY ?? "10", 10) || 10,
 );
 
-// Target speech chars per TTS chunk. Smaller chunks let more break tags land
-// as designed PCM silence (silence boundaries align with sentence ends).
-// 400 is a balance: small enough that most pauses become real gaps, large
-// enough that voice consistency holds across chunks.
-const TARGET_CHARS_PER_CHUNK = 400;
+// We chunk one sentence per TTS request: every break tag in the script becomes
+// a chunk boundary, every gap becomes real PCM silence. Inworld renders just
+// the single utterance, then we insert exactly the silence the writer designed.
+// No batching, no inline pauses to worry about, no provider-specific pause
+// semantics to reverse-engineer. Voice consistency holds because we use the
+// same voice_id across all calls.
 
 // Safety cap: if a v3 chunk returns more audio than (expected * this multiplier),
 // we truncate. Expected = text.length / SPOKEN_CHARS_PER_SEC. This keeps a runaway
@@ -534,48 +551,35 @@ type TtsChunk = {
   followingPauseSec: number;  // silent PCM to concat AFTER this chunk's audio
 };
 
-// Group segments into TTS chunks. A chunk is a run of speech joined by the pauses
-// that fall inside it (rendered as "..." so the TTS engine gives a natural micro-pause).
-// When a pause arrives and the current chunk has enough text, that pause becomes
-// the chunk boundary and its seconds are preserved as inter-chunk silent PCM.
+// One sentence = one chunk. Every speech segment becomes its own TTS request,
+// followed by the silence the writer designed. Pauses without preceding speech
+// (leading pauses) get folded onto the first or last chunk to avoid losing
+// silence at the edges.
 function buildTtsChunks(segments: ScriptSegment[]): TtsChunk[] {
   const chunks: TtsChunk[] = [];
-  let currentText = "";
-  let trailingPause = 0;
+  let leadingPause = 0;
 
-  const pushChunk = (pauseAfter: number) => {
-    if (!currentText) return;
-    chunks.push({ text: currentText.trim(), followingPauseSec: pauseAfter });
-    currentText = "";
-  };
-
-  for (const seg of segments) {
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
     if (seg.kind === "speech") {
-      currentText = currentText ? `${currentText} ${seg.text}` : seg.text;
-      continue;
+      const text = seg.text.trim();
+      if (!text) continue;
+      // Look ahead for the immediately following pause (if any) — that's the
+      // silence we owe after this sentence.
+      const next = segments[i + 1];
+      const followingPauseSec = next?.kind === "pause" ? next.seconds : 0;
+      chunks.push({ text, followingPauseSec });
+    } else if (chunks.length === 0) {
+      // Pause before any speech has happened — carry it forward.
+      leadingPause += seg.seconds;
     }
-    // pause
-    if (currentText.length >= TARGET_CHARS_PER_CHUNK) {
-      pushChunk(seg.seconds);
-    } else if (!currentText) {
-      // Leading pause before any speech — tack onto whatever comes next.
-      trailingPause += seg.seconds;
-    } else {
-      // Pause inside a chunk — render as ellipsis so TTS still beats slightly,
-      // but preserve the DESIGNED silence as added silent PCM at the boundary
-      // by folding it into the next boundary pause.
-      currentText += seg.seconds >= 6 ? " ... ... " : " ... ";
-    }
+    // Pauses after speech are handled by the look-ahead above; nothing to do.
   }
 
-  if (currentText) {
-    pushChunk(0);
-  }
-
-  // Prepend any leading pause to the first chunk's preceding silence (we'll add
-  // it to the tail silence for simplicity — listener notices tail much more).
-  if (trailingPause > 0 && chunks.length > 0) {
-    chunks[chunks.length - 1].followingPauseSec += trailingPause;
+  // If the script started with a pause, fold it onto the last chunk's tail so
+  // no designed silence is dropped. Listeners notice the tail more than the lead.
+  if (leadingPause > 0 && chunks.length > 0) {
+    chunks[chunks.length - 1].followingPauseSec += leadingPause;
   }
 
   return chunks;
@@ -713,27 +717,44 @@ export async function generateAudio(
     const chunkDurations = pcmChunks.map((b) => b.length / PCM_BYTE_RATE);
     const rawSpokenSeconds = chunkDurations.reduce((a, b) => a + b, 0);
 
-    // Deterministic silence placement:
-    //   - Every chunk gets its planned followingPauseSec silence after it.
-    //   - Any shortfall vs. target is distributed evenly across inter-chunk gaps.
-    //   - Tail stays at MIN_TAIL_SILENCE_SECONDS — once the close says "we return,"
-    //     more dead air just feels broken. If there are no gaps (single chunk),
-    //     the shortfall falls through to the tail as a last resort.
+    // Deterministic silence placement. Two-sided correction so we hit target
+    // duration whether spoken audio came in under (shortfall → pad gaps) or
+    // over (overshoot → compress planned silence proportionally).
+    //
+    // Tail stays at MIN_TAIL_SILENCE_SECONDS — once the close says "we return,"
+    // more dead air feels broken; less feels abrupt. If there are no inter-
+    // chunk gaps (single chunk), shortfall falls through to the tail.
     const plannedTotal = rawSpokenSeconds + totalPlannedSilence + MIN_TAIL_SILENCE_SECONDS;
-    const shortfall = Math.max(0, targetSeconds - plannedTotal);
     const numGaps = Math.max(0, ttsChunks.length - 1);
-    const extraPerGap = numGaps > 0 ? shortfall / numGaps : 0;
-    const extraTail = numGaps > 0 ? 0 : shortfall;
+
+    let extraPerGap = 0;
+    let extraTail = 0;
+    let silenceScale = 1; // multiplier applied to planned per-chunk silence
+
+    if (plannedTotal < targetSeconds) {
+      const shortfall = targetSeconds - plannedTotal;
+      extraPerGap = numGaps > 0 ? shortfall / numGaps : 0;
+      extraTail = numGaps > 0 ? 0 : shortfall;
+    } else if (plannedTotal > targetSeconds) {
+      // Overshoot: scale planned silence down so total lands at target. Floor
+      // at 0.4 so we never collapse pauses into nothing — meditation needs
+      // breath between sentences even when the writer over-paced.
+      const overshoot = plannedTotal - targetSeconds;
+      const compressible = totalPlannedSilence; // tail stays fixed
+      const minScale = 0.4;
+      silenceScale = compressible > 0
+        ? Math.max(minScale, 1 - overshoot / compressible)
+        : 1;
+    }
     const tailSilence = MIN_TAIL_SILENCE_SECONDS + extraTail;
 
-    // Assemble: [chunk0 pcm][planned pause 0 + extra gap][chunk1 pcm]...[tail]
+    // Assemble: [chunk0 pcm][scaled planned pause + extra gap][chunk1 pcm]...[tail]
     const assembled: Buffer[] = [];
     for (let i = 0; i < pcmChunks.length; i++) {
       assembled.push(pcmChunks[i]);
       const isLast = i === pcmChunks.length - 1;
-      const plannedPause = ttsChunks[i].followingPauseSec;
+      const plannedPause = ttsChunks[i].followingPauseSec * silenceScale;
       if (isLast) {
-        // Fold any planned pause on the last chunk into tail.
         assembled.push(silencePcm(plannedPause + tailSilence));
       } else {
         assembled.push(silencePcm(plannedPause + extraPerGap));
@@ -755,6 +776,7 @@ export async function generateAudio(
       rawSpokenSeconds: Math.round(rawSpokenSeconds),
       chunkDurations: chunkDurations.map((s) => Math.round(s)),
       totalPlannedSilence,
+      silenceScale: +silenceScale.toFixed(2),
       extraPerGap: Math.round(extraPerGap),
       tailSilence: Math.round(tailSilence),
       finalDurationSeconds,

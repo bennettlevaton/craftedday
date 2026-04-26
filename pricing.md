@@ -83,9 +83,10 @@ What it costs you per month if a subscriber maxes everything: 31 daily 5-min ses
 |---|---|---|
 | Daily cron (5-min, 31×/mo) | 31 | $3.94 |
 | Custom cap (150 min, all 5-min worst case) | 30 | $3.81 |
-| **Total worst-case cost** | 61 | **$7.75** |
+| Prompt caching savings on Claude (~$0.01/session × 61) | | –$0.61 |
+| **Total worst-case cost** | 61 | **$7.14** |
 | Net revenue | | $8.39 |
-| **Margin (worst case)** | | **+$0.64** |
+| **Margin (worst case)** | | **+$1.25** |
 
 ### At $40/M Inworld tier (~80 subs)
 
@@ -107,17 +108,19 @@ What it costs you per month if a subscriber maxes everything: 31 daily 5-min ses
 
 ## Realistic-usage per-subscriber math (blended)
 
-Worst case (above) is rare. Most subs use much less. Expected distribution:
+Worst case (above) is rare. Most subs use much less. Expected distribution, **with daily-reuse for dormant subs now active**:
 
-| Segment | % of base | Daily plays/mo | Custom min/mo | Cost/mo | Margin/mo |
-|---|---|---|---|---|---|
-| Dormant | ~40% | 0 listens, 31 generated | 0 | $3.94 | +$4.45 |
-| Light | ~30% | ~10 | 20 | $3.94 + $0.51 = $4.45 | +$3.94 |
-| Engaged | ~20% | ~22 | 60 | $3.94 + $1.52 = $5.46 | +$2.93 |
-| Heavy | ~8% | 31 | 100 | $3.94 + $2.54 = $6.48 | +$1.91 |
-| Power | ~2% | 31 | 150 | $7.75 | +$0.64 |
+| Segment | % of base | Daily plays/mo | Custom min/mo | Daily cost | Custom cost | Margin/mo |
+|---|---|---|---|---|---|---|
+| Dormant | ~40% | 0 listens | 0 | **$0** (reuses yesterday) | $0 | **+$8.39** |
+| Light | ~30% | ~10 listens, ~21 reused | 20 | $1.27 | $0.51 | +$6.61 |
+| Engaged | ~20% | ~22 | 60 | $2.79 | $1.52 | +$4.08 |
+| Heavy | ~8% | 31 | 100 | $3.94 | $2.54 | +$1.91 |
+| Power | ~2% | 31 | 150 | $3.94 | $3.81 | +$0.64 |
 
-**Blended average margin per sub: ~$3.50/mo at launch tier.**
+**Blended average margin per sub: ~$5.80/mo at launch tier** (was ~$3.50 before dormant reuse).
+
+The dormant-reuse logic is the single biggest unit-economic lever. ~40% of subs paying full price while costing ~$0 is what makes $9.99 work.
 
 ## Cost composition (5-min beginner session, $50/M tier)
 
@@ -130,15 +133,67 @@ Worst case (above) is rare. Most subs use much less. Expected distribution:
 
 TTS dominates. Claude Opus 4.7 at corrected pricing ($5/$25 per M) is no longer the bottleneck Sonnet swap was meant to solve; the Opus-vs-Sonnet decision is now ~$0.013/session — not worth a quality compromise.
 
-## Levers if margins compress later
+## Optimizations already shipped
 
-In rough order of impact-per-effort:
+✅ **Daily reuse for dormant subs** (`api/lib/daily.ts`). If yesterday's daily has zero `meditation_sessions` rows, today reuses it instead of generating fresh. Single biggest lever — drops dormant cost to ~$0/sub.
 
-1. **Move to $40/M Inworld plan** when sub count crosses ~80 (volume tier savings).
-2. **Skip cron for dormant subs** (no session opened in last N days) → no daily generated for them. Pure savings, zero quality impact.
-3. **Force daily to "experienced" ratio (40% spoken)** regardless of user level → daily cost from $3.94 → $3.04/sub/mo (~23% saving).
-4. **Move to $30/M Inworld plan** at ~400 subs.
-5. **Add Anthropic prompt caching** for the section system prompt (identical across 5 parallel calls) → ~50% Claude input savings → ~$0.011/session save → small but free win.
+✅ **Anthropic prompt caching** on Opus section writer (`api/lib/meditation.ts`). System prompt cached across the 5 parallel section calls. Saves ~$0.01/session.
+
+✅ **Inworld TTS-1.5-Max** replacing ElevenLabs Turbo. Better quality (#1 leaderboard) at lower cost.
+
+✅ **Opus 4.7 at $5/M in / $25/M out** (corrected from old $15/$75 estimate). No need for Sonnet quality compromise.
+
+✅ **Queue concurrency = 2** so two users can generate simultaneously without contention (10 Inworld parallel slots / 5 per worker = 2 workers).
+
+## What's left to optimize, in order of impact-per-effort
+
+### 1. Plan tier upgrades (passive, automatic with growth)
+- At ~80 subs: switch Inworld to $300/mo plan ($40/M chars). Saves ~20% on TTS line.
+- At ~400 subs: switch to $1500/mo plan ($30/M chars). Saves another ~25% on TTS.
+- Just plan transitions, no code change required.
+
+### 2. ~~Force daily to "experienced" ratio regardless of user level~~ (rejected)
+Considered: override `experienceLevel` in `enqueueDailyForUser` to always pass `"experienced"`, getting 40% spoken / 60% silence on every daily regardless of user.
+- Would save ~$0.93/sub/mo on engaged beginners
+- **Rejected:** beginners need more guidance, not less. Less narration risks early-stage churn from confusion ("the app feels empty"), which dwarfs the savings. Cheap dollar at the cost of new-user retention.
+
+### 3. Reduce Opus section count from 5 to 4
+Current pipeline calls Opus 5× in parallel. Going to 4 sections:
+- Saves 20% of Opus calls = ~$0.007/session
+- **Risk:** less arc structure, sections might feel rushed
+- **Code change:** edit Haiku planner prompt to output 4 sections instead of 4-5
+- Marginal but free
+
+### 4. Cache Haiku planner output for similar prompts
+The Haiku plan call generates structure based on prompt + listener context. For dailies (which use stable archetypes), the plan is fairly deterministic. Could:
+- Cache by `(archetype_id, experience_level)` for ~24 hours
+- Saves $0.003/session on cache hits
+- **Code change:** add LRU or KV cache around `generatePlan`
+- Tiny but trivial
+
+### 5. Hibernate truly long-dormant subs
+Today's reuse logic chains: if yesterday was reused, today reuses too. Truly dormant users can chain forever at $0 cost, which is fine. But you could also:
+- Stop generating ANY daily for users dormant >30 days (not even the reuse insert)
+- Re-engage on first open with a fresh session
+- Saves the trivial DB write cost on truly inactive users
+- Marginal — primarily a cleanup play
+
+### 6. Smaller chunk sizes on Inworld
+Current `TARGET_CHARS_PER_CHUNK = 400`. Inworld has lower per-request overhead than ElevenLabs. Could test 600-800 char chunks to reduce request count by ~30-40%, faster generation but possibly less precise silence boundaries. Quality test required.
+
+### 7. Compress final MP3 lower
+Current encoding: 192k stereo. Could drop to 128k for daily content (less critical):
+- Saves ~30% R2 storage + bandwidth
+- Already negligible cost line, so this is purely vanity unless storage scales 100×
+
+## What I'd actually focus on next
+
+**Don't optimize further until you have ~50 paying subs.** Current setup ($1.25 worst case + $5.80 blended margin at launch) is healthy. Real optimization wins come from:
+1. Watching `cron:daily` logs to see actual reuse rate (validates the dormant-savings model)
+2. Watching Inworld dashboard for actual char usage vs estimates
+3. Watching `cache_creation_input_tokens` / `cache_read_input_tokens` in Claude logs
+
+After 30 days of real data, you'll know which levers above actually matter. Optimizing on hypotheticals before that is procrastination.
 
 ## Update triggers
 

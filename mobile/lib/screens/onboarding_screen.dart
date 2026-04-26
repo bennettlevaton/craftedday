@@ -17,6 +17,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   String? _level;
   final Set<String> _goals = {};
+  int? _notificationHour;
   bool _submitting = false;
 
   @override
@@ -43,6 +44,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (_goals.contains('other') && _otherController.text.trim().isEmpty) {
       return false;
     }
+    if (_notificationHour == null) return false;
     return true;
   }
 
@@ -57,6 +59,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         primaryGoalCustom: _goals.contains('other')
             ? _otherController.text.trim()
             : null,
+        notificationHour: _notificationHour,
       );
       if (!mounted) return;
       context.go('/home');
@@ -168,6 +171,29 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                 ),
               ],
+              const SizedBox(height: 32),
+              _Label(text: 'When do you usually have 10 minutes for yourself?'),
+              const SizedBox(height: 4),
+              Text(
+                "We'll send a quiet reminder at that time.",
+                style: textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _SingleChoice(
+                options: const [
+                  ('6', 'Early — 6am'),
+                  ('8', 'Morning — 8am'),
+                  ('12', 'Lunch — 12pm'),
+                  ('15', 'Afternoon — 3pm'),
+                  ('18', 'Evening — 6pm'),
+                  ('21', 'Night — 9pm'),
+                ],
+                selected: _notificationHour?.toString(),
+                onSelect: (v) =>
+                    setState(() => _notificationHour = int.parse(v)),
+              ),
               const SizedBox(height: 48),
               SizedBox(
                 width: double.infinity,

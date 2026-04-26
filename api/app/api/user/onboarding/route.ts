@@ -14,6 +14,7 @@ type Body = {
   experienceLevel?: "beginner" | "intermediate" | "experienced";
   primaryGoals?: string[];
   primaryGoalCustom?: string;
+  notificationHour?: number;
 };
 
 const VALID_LEVELS = new Set(["beginner", "intermediate", "experienced"]);
@@ -71,6 +72,18 @@ export async function POST(req: NextRequest) {
       primaryGoalCustom = customRaw;
     }
 
+    let notificationHour: number = 8;
+    if (body.notificationHour !== undefined) {
+      const h = body.notificationHour;
+      if (typeof h !== "number" || !Number.isInteger(h) || h < 0 || h > 23) {
+        return NextResponse.json(
+          { error: "invalid notificationHour" },
+          { status: 400 },
+        );
+      }
+      notificationHour = h;
+    }
+
     const profile = await getOrCreateProfile(userId);
     const isFirstOnboarding = profile.onboardedAt === null;
 
@@ -81,6 +94,7 @@ export async function POST(req: NextRequest) {
         experienceLevel,
         primaryGoals: Array.from(new Set(goals)),
         primaryGoalCustom,
+        notificationHour,
         onboardedAt: new Date(),
         updatedAt: new Date(),
       })

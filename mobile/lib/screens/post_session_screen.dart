@@ -174,9 +174,7 @@ class _CelebrationView extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final streak = stats?.streak ?? 0;
-    final streakLine = streak >= 1
-        ? (streak == 1 ? '1 day streak' : '$streak day streak')
-        : null;
+    final streakLine = streak >= 1 ? 'Day $streak of practice' : null;
     final closingLine = celebration?.trim().isNotEmpty == true
         ? celebration!
         : 'See you tomorrow.';

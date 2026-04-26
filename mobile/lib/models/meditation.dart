@@ -42,13 +42,13 @@ class Meditation {
 class UserStats {
   final int streak;
   final int totalSessions;
-  final double hours;
+  final int minutes;
   final String favoriteTime;
 
   const UserStats({
     required this.streak,
     required this.totalSessions,
-    required this.hours,
+    required this.minutes,
     required this.favoriteTime,
   });
 
@@ -56,7 +56,7 @@ class UserStats {
     return UserStats(
       streak: json['streak'] as int,
       totalSessions: json['totalSessions'] as int,
-      hours: (json['hours'] as num).toDouble(),
+      minutes: (json['minutes'] as num).toInt(),
       favoriteTime: json['favoriteTime'] as String,
     );
   }

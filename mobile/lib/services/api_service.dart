@@ -236,6 +236,7 @@ class ApiService {
     List<String>? primaryGoals,
     String? primaryGoalCustom,
     String? voiceGender,
+    int? notificationHour,
   }) async {
     await _dio.patch(
       '/api/user/me',
@@ -245,6 +246,7 @@ class ApiService {
         if (primaryGoals != null) 'primaryGoals': primaryGoals,
         if (primaryGoals != null) 'primaryGoalCustom': primaryGoalCustom,
         if (voiceGender != null) 'voiceGender': voiceGender,
+        if (notificationHour != null) 'notificationHour': notificationHour,
       },
     );
   }
@@ -263,6 +265,7 @@ class ApiService {
     required String experienceLevel,
     required List<String> primaryGoals,
     String? primaryGoalCustom,
+    int? notificationHour,
   }) async {
     await _dio.post(
       '/api/user/onboarding',
@@ -271,6 +274,7 @@ class ApiService {
         'experienceLevel': experienceLevel,
         'primaryGoals': primaryGoals,
         if (primaryGoalCustom != null) 'primaryGoalCustom': primaryGoalCustom,
+        if (notificationHour != null) 'notificationHour': notificationHour,
       },
     );
   }
@@ -283,6 +287,7 @@ class UserMe {
   final List<String> primaryGoals;
   final String? primaryGoalCustom;
   final String voiceGender;
+  final int notificationHour;
 
   const UserMe({
     required this.needsOnboarding,
@@ -291,6 +296,7 @@ class UserMe {
     this.primaryGoals = const [],
     this.primaryGoalCustom,
     required this.voiceGender,
+    this.notificationHour = 8,
   });
 
   factory UserMe.fromJson(Map<String, dynamic> json) => UserMe(
@@ -300,6 +306,7 @@ class UserMe {
         primaryGoals: (json['primaryGoals'] as List?)?.cast<String>() ?? const [],
         primaryGoalCustom: json['primaryGoalCustom'] as String?,
         voiceGender: (json['voiceGender'] as String?) ?? 'female',
+        notificationHour: (json['notificationHour'] as int?) ?? 8,
       );
 
   UserMe copyWith({
@@ -309,6 +316,7 @@ class UserMe {
     List<String>? primaryGoals,
     String? primaryGoalCustom,
     String? voiceGender,
+    int? notificationHour,
   }) {
     return UserMe(
       needsOnboarding: needsOnboarding ?? this.needsOnboarding,
@@ -317,6 +325,7 @@ class UserMe {
       primaryGoals: primaryGoals ?? this.primaryGoals,
       primaryGoalCustom: primaryGoalCustom ?? this.primaryGoalCustom,
       voiceGender: voiceGender ?? this.voiceGender,
+      notificationHour: notificationHour ?? this.notificationHour,
     );
   }
 }

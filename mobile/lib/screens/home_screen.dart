@@ -91,7 +91,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _setupNotifications() async {
     final granted = await NotificationService.instance.requestPermission();
-    if (granted) await NotificationService.instance.scheduleIfNeeded();
+    if (!granted) return;
+    int hour = 8;
+    try {
+      final me = await apiService.getMe();
+      hour = me.notificationHour;
+    } catch (_) {
+      // Default to 8am if profile fetch fails.
+    }
+    await NotificationService.instance.scheduleIfNeeded(hour: hour);
   }
 
   Future<void> _loadDailySession() async {
@@ -332,22 +340,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           (_dailySession!['duration'] as int?) ?? 600,
                     ),
                     const SizedBox(height: 28),
-                  ],
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _name == null ? greeting : '$greeting, $_name',
-                          style: textTheme.bodyMedium?.copyWith(
-                            color: AppColors.textSecondary,
-                            fontSize: 15,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _name == null ? greeting : '$greeting, $_name',
+                            style: textTheme.bodyMedium?.copyWith(
+                              color: AppColors.textSecondary,
+                              fontSize: 15,
+                            ),
                           ),
                         ),
-                      ),
-                      if (_stats != null && _stats!.streak >= 1)
-                        _StreakChip(streak: _stats!.streak),
+                        if (_stats != null && _stats!.streak >= 1)
+                          _StreakChip(streak: _stats!.streak),
+                      ],
+                    ),
+                  ] else ...[
+                    if (_stats != null && _stats!.streak >= 1) ...[
+                      _StreakHeroCard(streak: _stats!.streak),
+                      const SizedBox(height: 28),
                     ],
-                  ),
+                    Text(
+                      _name == null ? greeting : '$greeting, $_name',
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: AppColors.textSecondary,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Text(
                     'How are you\nfeeling today?',
@@ -492,6 +512,77 @@ class _StreakChip extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _StreakHeroCard extends StatelessWidget {
+  final int streak;
+  const _StreakHeroCard({required this.streak});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final dayWord = streak == 1 ? 'day' : 'days';
+    final subtitle = _streakSubtitle(streak);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.accent.withValues(alpha: 0.20),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.accent.withValues(alpha: 0.15),
+            ),
+            child: const Icon(
+              Icons.local_fire_department_rounded,
+              size: 22,
+              color: AppColors.accent,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$streak $dayWord running',
+                  style: textTheme.headlineMedium?.copyWith(
+                    fontSize: 17,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _streakSubtitle(int streak) {
+    if (streak == 1) return 'A start. Come back tomorrow to make it two.';
+    if (streak < 5) return "Don't break the chain.";
+    if (streak < 7) return 'Almost a full week. Keep going.';
+    if (streak < 14) return "You're becoming someone who shows up.";
+    if (streak < 30) return "This isn't a habit anymore — it's a practice.";
+    return 'A month of presence. Quietly, this changes things.';
   }
 }
 

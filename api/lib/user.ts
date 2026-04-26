@@ -4,20 +4,20 @@ import { userProfiles } from "@/db/schema";
 
 // Creates a user_profiles row lazily on first access.
 // No separate users table — Clerk user ID is the anchor.
+//
+// Atomic: INSERT ... ON CONFLICT DO NOTHING handles concurrent first-access
+// races (two requests for a brand-new user firing in parallel) without
+// creating duplicates or throwing on the second insert.
 export async function getOrCreateProfile(userId: string) {
-  const existing = await db
+  await db
+    .insert(userProfiles)
+    .values({ userId })
+    .onConflictDoNothing();
+
+  const rows = await db
     .select()
     .from(userProfiles)
     .where(eq(userProfiles.userId, userId))
     .limit(1);
-  if (existing.length > 0) return existing[0];
-
-  await db.insert(userProfiles).values({ userId });
-
-  const created = await db
-    .select()
-    .from(userProfiles)
-    .where(eq(userProfiles.userId, userId))
-    .limit(1);
-  return created[0];
+  return rows[0];
 }

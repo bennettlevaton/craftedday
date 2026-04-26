@@ -76,20 +76,47 @@ class _CraftedDayAppState extends State<CraftedDayApp>
         ? defined
         : dotenv.env['CLERK_PUBLISHABLE_KEY'] ?? '';
 
+    final config = ClerkAuthConfig(
+      publishableKey: publishableKey,
+      deepLinkStream: _appLinks.uriLinkStream,
+      redirectionGenerator: (_, __) =>
+          Uri.parse('craftedday://oauth-callback'),
+      defaultLaunchMode: LaunchMode.externalApplication,
+    );
+
     return MaterialApp.router(
       title: 'CraftedDay',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       routerConfig: appRouter,
-      builder: ClerkAuth.materialAppBuilder(
-        config: ClerkAuthConfig(
-          publishableKey: publishableKey,
-          deepLinkStream: _appLinks.uriLinkStream,
-          redirectionGenerator: (_, __) =>
-              Uri.parse('craftedday://oauth-callback'),
-          defaultLaunchMode: LaunchMode.externalApplication,
+      builder: (context, child) => ClerkAuth(
+        config: config,
+        child: ClerkErrorListener(
+          handler: _silenceTransientNetworkErrors,
+          child: child!,
         ),
       ),
     );
+  }
+
+  // iOS suspends sockets when the app backgrounds; the next Clerk token
+  // refresh hits a dead fd and surfaces "Bad file descriptor" or similar
+  // transient network errors. The SDK retries on the next call, so don't
+  // toast the user about it.
+  static void _silenceTransientNetworkErrors(
+    BuildContext context,
+    dynamic error,
+  ) {
+    final msg = error.toString().toLowerCase();
+    if (msg.contains('bad file descriptor') ||
+        msg.contains('connection closed') ||
+        msg.contains('connection reset') ||
+        msg.contains('software caused connection abort') ||
+        msg.contains('socketexception')) {
+      return; // swallow
+    }
+    // Any other Clerk error: log it but don't snackbar — we don't want
+    // raw SDK strings on the user's screen anyway.
+    debugPrint('Clerk error: $error');
   }
 }

@@ -25,6 +25,7 @@ type PatchBody = {
   primaryGoals?: string[];
   primaryGoalCustom?: string | null;
   voiceGender?: string;
+  notificationHour?: number;
 };
 
 export async function GET(req: NextRequest) {
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
       primaryGoals: profile.primaryGoals ?? [],
       primaryGoalCustom: profile.primaryGoalCustom,
       voiceGender: profile.voiceGender,
+      notificationHour: profile.notificationHour ?? 8,
     });
   } catch (err) {
     if (isAuthError(err)) {
@@ -115,6 +117,17 @@ export async function PATCH(req: NextRequest) {
         );
       }
       updates.voiceGender = body.voiceGender;
+    }
+
+    if (body.notificationHour !== undefined) {
+      const h = body.notificationHour;
+      if (typeof h !== "number" || !Number.isInteger(h) || h < 0 || h > 23) {
+        return NextResponse.json(
+          { error: "invalid notificationHour" },
+          { status: 400 },
+        );
+      }
+      updates.notificationHour = h;
     }
 
     await getOrCreateProfile(userId);

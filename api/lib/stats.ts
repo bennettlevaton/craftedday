@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "./db";
-import { meditations, meditationSessions } from "@/db/schema";
+import { meditationSessions } from "@/db/schema";
 import { log } from "./log";
 
 const PT_TZ = "America/Los_Angeles";
@@ -8,22 +8,25 @@ const PT_TZ = "America/Los_Angeles";
 export type UserStats = {
   streak: number;
   totalSessions: number;
-  hours: number;
+  minutes: number;
   favoriteTime: string;
 };
 
+// Stats are derived from meditation_sessions (actual listening), not from
+// meditations (just generated audio). A user re-listening to the same session
+// stacks; bailing early counts what they actually heard. Streak is consecutive
+// days with at least one completed listen.
 export async function computeUserStats(userId: string): Promise<UserStats> {
   const t0 = Date.now();
 
-  const [rows, listenRows] = await Promise.all([
+  const [allSessions, completedSessions] = await Promise.all([
     db
       .select({
-        duration: meditations.duration,
-        createdAt: meditations.createdAt,
+        listenedSeconds: meditationSessions.listenedSeconds,
+        createdAt: meditationSessions.createdAt,
       })
-      .from(meditations)
-      .where(eq(meditations.userId, userId))
-      .orderBy(desc(meditations.createdAt)),
+      .from(meditationSessions)
+      .where(eq(meditationSessions.userId, userId)),
     db
       .select({ createdAt: meditationSessions.createdAt })
       .from(meditationSessions)
@@ -38,21 +41,24 @@ export async function computeUserStats(userId: string): Promise<UserStats> {
 
   const queryMs = Date.now() - t0;
 
-  const totalSessions = rows.length;
-  const totalSeconds = rows.reduce((sum, r) => sum + (r.duration ?? 0), 0);
-  const hours = +(totalSeconds / 3600).toFixed(1);
+  const totalSessions = completedSessions.length;
+  const totalSeconds = allSessions.reduce(
+    (sum, r) => sum + (r.listenedSeconds ?? 0),
+    0,
+  );
+  const minutes = Math.round(totalSeconds / 60);
 
-  const streak = computeStreak(listenRows.map((r) => r.createdAt));
-  const favoriteTime = computeFavoriteTime(rows.map((r) => r.createdAt));
+  const streak = computeStreak(completedSessions.map((r) => r.createdAt));
+  const favoriteTime = computeFavoriteTime(allSessions.map((r) => r.createdAt));
 
   log("stats", "computed", {
     ms: Date.now() - t0,
     query_ms: queryMs,
-    rows: rows.length,
-    listenRows: listenRows.length,
+    allSessions: allSessions.length,
+    completed: completedSessions.length,
   });
 
-  return { streak, totalSessions, hours, favoriteTime };
+  return { streak, totalSessions, minutes, favoriteTime };
 }
 
 function ptDateKey(d: Date): string {

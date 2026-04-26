@@ -116,6 +116,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) setState(() => _me = _me?.copyWith(voiceGender: result));
   }
 
+  Future<void> _editNotificationHour() async {
+    final result = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _NotificationHourSheet(initial: _me?.notificationHour ?? 8),
+    );
+    if (result == null) return;
+    await _persist(() => apiService.updateProfile(notificationHour: result));
+    if (mounted) setState(() => _me = _me?.copyWith(notificationHour: result));
+  }
+
   Future<void> _persist(Future<void> Function() action) async {
     try {
       await action();
@@ -157,7 +171,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const _StatRowSkeleton(labelWidth: 100, valueWidth: 70),
             ] else ...[
               _StatRow(
-                label: 'Current streak',
+                label: 'Practice streak',
                 value: stats == null
                     ? '—'
                     : stats.streak == 1
@@ -169,8 +183,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 value: stats == null ? '—' : '${stats.totalSessions}',
               ),
               _StatRow(
-                label: 'Hours meditated',
-                value: stats == null ? '—' : '${stats.hours}',
+                label: 'Minutes of practice',
+                value: stats == null ? '—' : '${stats.minutes}',
               ),
               _StatRow(
                 label: 'Favorite time',
@@ -205,6 +219,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               label: 'Voice',
               value: _formatVoice(me?.voiceGender),
               onTap: me == null ? null : _editVoice,
+            ),
+            _EditableRow(
+              label: 'Reminder time',
+              value: _formatHour(me?.notificationHour ?? 8),
+              onTap: me == null ? null : _editNotificationHour,
             ),
             const SizedBox(height: 48),
             ClerkAuthBuilder(
@@ -254,6 +273,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'male' => 'Male',
       _ => '—',
     };
+  }
+
+  String _formatHour(int hour) {
+    if (hour == 0) return '12am';
+    if (hour < 12) return '${hour}am';
+    if (hour == 12) return '12pm';
+    return '${hour - 12}pm';
   }
 
   String _formatGoals(UserMe? me) {
@@ -764,6 +790,51 @@ class _GoalsSheetState extends State<_GoalsSheet> {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _NotificationHourSheet extends StatefulWidget {
+  final int initial;
+  const _NotificationHourSheet({required this.initial});
+
+  @override
+  State<_NotificationHourSheet> createState() => _NotificationHourSheetState();
+}
+
+class _NotificationHourSheetState extends State<_NotificationHourSheet> {
+  late int _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.initial;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const options = [
+      (6, 'Early — 6am'),
+      (8, 'Morning — 8am'),
+      (12, 'Lunch — 12pm'),
+      (15, 'Afternoon — 3pm'),
+      (18, 'Evening — 6pm'),
+      (21, 'Night — 9pm'),
+    ];
+    return _SheetScaffold(
+      title: 'Reminder time',
+      onSave: () => Navigator.of(context).pop(_selected),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: options
+            .map((opt) => _Chip(
+                  label: opt.$2,
+                  selected: _selected == opt.$1,
+                  onTap: () => setState(() => _selected = opt.$1),
+                ))
+            .toList(),
       ),
     );
   }

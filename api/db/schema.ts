@@ -11,6 +11,7 @@ export const userProfiles = pgTable("user_profiles", {
   primaryGoals: varchar("primary_goals", { length: 32 }).array(),
   primaryGoalCustom: varchar("primary_goal_custom", { length: 256 }),
   voiceGender: varchar("voice_gender", { length: 16 }).default("female").notNull(),
+  notificationHour: integer("notification_hour").default(8).notNull(),
   preferenceSummary: text("preference_summary"),
   preferenceSummaryUpdatedAt: timestamp("preference_summary_updated_at"),
   onboardedAt: timestamp("onboarded_at"),

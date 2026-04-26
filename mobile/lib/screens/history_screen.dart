@@ -77,7 +77,7 @@ class _HistoryScreenState extends State<HistoryScreen>
         children: [
           _SessionList(
             future: _historyFuture,
-            emptyText: 'Your sessions will appear here',
+            emptyText: 'Your practice will appear here',
             nudge: _nudgeCopy(_stats),
             onRefresh: () { setState(() { _historyFuture = apiService.getHistory(); }); },
           ),

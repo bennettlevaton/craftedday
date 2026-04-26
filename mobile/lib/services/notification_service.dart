@@ -47,15 +47,16 @@ class NotificationService {
 
   String _todayKey() => DateTime.now().toIso8601String().slice(0, 10);
 
-  Future<void> scheduleIfNeeded() async {
+  Future<void> scheduleIfNeeded({int hour = 8}) async {
     await initialize();
     await _plugin.cancel(_notificationId);
 
     // Don't remind if they already meditated today
     if (await _didSessionToday()) return;
 
+    final clamped = (hour < 0 || hour > 23) ? 8 : hour;
     final now = tz.TZDateTime.now(tz.local);
-    var scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, 15);
+    var scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, clamped);
     if (scheduled.isBefore(now)) {
       scheduled = scheduled.add(const Duration(days: 1));
     }

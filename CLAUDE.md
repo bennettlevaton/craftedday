@@ -4,6 +4,8 @@ AI-powered personalized meditation app. User describes their current mood/situat
 
 > **Also read `CODING.md`** for schema, API, Flutter, and general code conventions before making changes.
 
+> ⚠️ **Never ship breaking API changes.** The iOS app in production cannot be atomically updated. Renaming/removing JSON fields, changing types, or tightening request validators will crash the App Store build the next time it calls that endpoint. Add new fields alongside old ones; only remove old fields after the older build is confirmed gone. See "Mobile compatibility" in `CODING.md`.
+
 ---
 
 ## 🚀 Launch Checklist

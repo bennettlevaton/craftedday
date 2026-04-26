@@ -80,6 +80,36 @@ Don't await; don't block the user response.
 
 ---
 
+## Mobile compatibility — never break existing app versions
+
+**The API serves a shipped iOS binary that we don't control.** Once a version is in the App Store, it's running against production for weeks or months. We can't atomically update server + client. Treat every API change as a public contract.
+
+**Never:**
+- Rename a JSON field in a response (`hours` → `minutes`). Old clients parse `json['hours']` and crash.
+- Change a field's type (`int` → `string`, scalar → object).
+- Remove a field a client reads.
+- Tighten a request validator (e.g. start requiring a field that older builds don't send).
+- Change a route path or method.
+- Change error response shape — `{ error: "..." }` is part of the contract.
+
+**Safe changes:**
+- Add new optional fields to a response. Old clients ignore them.
+- Add new optional fields to a request. New clients send them; backend defaults them when absent.
+- Add new endpoints.
+- Add new enum values for fields the client only displays (not switches on).
+- Loosen a validator (accept what was previously rejected).
+
+**When you genuinely need a breaking change:**
+1. **Add the new field alongside the old one.** Return both. Old clients keep working, new clients use the new field.
+2. **Ship the new mobile build** that uses the new field, wait for adoption.
+3. **Eventually drop the old field** — but only after you can confirm the older builds are gone (App Store analytics, or a grace period of 60+ days).
+
+**Validators:** when adding a required field server-side, make it optional first (with a server default) until the new mobile build that always sends it has shipped and propagated.
+
+**Response shape diffs are part of code review.** If a PR touches a route handler's `NextResponse.json({...})`, ask: would the current App Store build still parse this?
+
+---
+
 ## Flutter / Dart conventions
 
 **Screen structure:**

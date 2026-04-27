@@ -169,7 +169,9 @@ async function generateConcept(opts: { theme: string; history: ReelHistory }): P
     model: "claude-opus-4-7",
     max_tokens: 8000,
     temperature: 1,
-    thinking: { type: "enabled", budget_tokens: 5000 },
+    thinking: { type: "adaptive" },
+    // @ts-expect-error — output_config is on Opus 4.x but may not be in this SDK version yet
+    output_config: { effort: "high" },
     system: CONCEPT_SYSTEM,
     messages: [{ role: "user", content: conceptUserPrompt(opts) }],
   });

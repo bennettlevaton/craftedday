@@ -12,14 +12,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import { spawn } from "child_process";
-import { randomBytes } from "crypto";
 import { createWriteStream, readFileSync } from "fs";
 import { mkdir, rm } from "fs/promises";
 import { join } from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { r2, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/r2";
+import { put } from "@vercel/blob";
 import { log } from "@/lib/log";
 
 const FONT_PATH = join(process.cwd(), "lib/fonts/Fraunces144pt-SemiBold.ttf");
@@ -332,17 +330,18 @@ function runFfmpeg(args: string[]): Promise<void> {
 
 // ---------- Upload ----------
 
-async function uploadToR2(localPath: string, date: string): Promise<string> {
-  const key = `reels/${date}-${randomBytes(4).toString("hex")}.mp4`;
-  await r2.send(
-    new PutObjectCommand({
-      Bucket: R2_BUCKET,
-      Key: key,
-      Body: readFileSync(localPath),
-      ContentType: "video/mp4",
-    }),
-  );
-  return `${R2_PUBLIC_URL}/${key}`;
+// Reels live on Vercel Blob, NOT R2. Instagram's media-fetcher chokes on R2-
+// backed URLs (both pub-xxx.r2.dev and custom-domain proxied) and returns the
+// generic "ERROR: ERROR" from the Graph API container endpoint. Same file
+// served from any non-R2 host publishes fine. Meditation audio still uses
+// R2 — only social-publish video moved.
+async function uploadToBlob(localPath: string, date: string): Promise<string> {
+  const blob = await put(`reels/${date}.mp4`, readFileSync(localPath), {
+    access: "public",
+    contentType: "video/mp4",
+    // Blob adds a random suffix by default → unique URL per generation.
+  });
+  return blob.url;
 }
 
 // ---------- Buffer ----------
@@ -419,9 +418,9 @@ export async function generateAndPostReel(opts: {
     await renderReel(backgroundPath, post.quote, reelPath);
     log("reel", "render:done");
 
-    log("reel", "r2:upload");
-    const publicUrl = await uploadToR2(reelPath, date);
-    log("reel", "r2:done", { publicUrl });
+    log("reel", "blob:upload");
+    const publicUrl = await uploadToBlob(reelPath, date);
+    log("reel", "blob:done", { publicUrl });
 
     log("reel", "buffer:post");
     const bufferPostId = await postToBuffer(post, publicUrl);

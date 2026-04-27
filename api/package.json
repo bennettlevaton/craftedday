@@ -21,6 +21,7 @@
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@tailwindcss/postcss": "^4.2.3",
     "@vercel/analytics": "^2.0.1",
+    "@vercel/blob": "^2.3.3",
     "@vercel/queue": "^0.1.6",
     "drizzle-orm": "^0.45.2",
     "next": "16.2.4",

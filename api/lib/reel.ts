@@ -275,8 +275,8 @@ function escDrawtext(s: string): string {
 async function renderReel(backgroundPath: string, quote: string, outPath: string) {
   const SIDE_MARGIN = 88;
   const maxTextWidth = TARGET_WIDTH - SIDE_MARGIN * 2;
-  const { lines, fontsize: fitFontsize } = layoutQuote(quote, maxTextWidth, 168);
-  const fontsize = Math.max(72, fitFontsize);
+  const { lines, fontsize: fitFontsize } = layoutQuote(quote, maxTextWidth, 200);
+  const fontsize = Math.max(96, fitFontsize);
   const lineGap = Math.round(fontsize * 0.18);
 
   const blockCenterY = `h*0.36`;
@@ -295,7 +295,6 @@ async function renderReel(backgroundPath: string, quote: string, outPath: string
       `shadowcolor=black@0.55`,
       `shadowx=0`,
       `shadowy=4`,
-      `alpha='if(lt(t,0.4),t/0.4,1)'`,
     ].join(":");
   });
 
@@ -319,8 +318,10 @@ async function renderReel(backgroundPath: string, quote: string, outPath: string
     "-profile:v", "main",
     "-level", "4.0",
     "-pix_fmt", "yuv420p",
-    "-preset", "medium",
-    "-crf", "20",
+    "-preset", "slow",
+    "-crf", "17",
+    "-maxrate", "12M",
+    "-bufsize", "24M",
     "-r", "30",
     "-g", "60",
     "-keyint_min", "60",

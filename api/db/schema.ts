@@ -119,7 +119,12 @@ export const reelPosts = pgTable("reel_posts", {
   theme:         varchar("theme", { length: 64 }),
   videoUrl:      text("video_url"),
   bufferPostId:  varchar("buffer_post_id", { length: 128 }),
-  createdAt:     timestamp("created_at").defaultNow().notNull(),
+  // Backfilled by /api/cron/sync-reel-meta after Buffer pushes to IG. Lets us
+  // click through to view per-post stats manually until we wire IG Graph API.
+  instagramPostId:    varchar("instagram_post_id", { length: 128 }),
+  instagramPermalink: text("instagram_permalink"),
+  metaSyncedAt:       timestamp("meta_synced_at"),
+  createdAt:          timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("reel_posts_created_at_idx").on(desc(t.createdAt)),
 ]);

@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/generate-reel",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/sync-reel-meta",
+      "schedule": "0 6 * * *"
     }
   ],
   "functions": {

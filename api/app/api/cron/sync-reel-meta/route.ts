@@ -110,14 +110,36 @@ type Insights = {
   plays?: number;
   views?: number;
   total_interactions?: number;
+  ig_reels_avg_watch_time?: number;
+  ig_reels_video_view_total_time?: number;
+  clips_replays_count?: number;
+  navigation?: number;
+  profile_visits?: number;
+  profile_activity?: number;
 };
 
 async function fetchInsights(mediaId: string): Promise<Insights> {
   const token = process.env.META_PAGE_ACCESS_TOKEN!;
-  // Reels-supported metrics. Some return empty for <1000-follower accounts.
-  // Order matters: query each metric separately so one missing doesn't fail
-  // the whole call.
-  const wanted = ["likes", "comments", "saved", "shares", "reach", "plays", "views", "total_interactions"];
+  // Reels-supported metrics. Some return empty for <1000-follower accounts,
+  // and some require breakdowns the API will reject without — those throw
+  // and get skipped. Order matters: each metric is queried separately so one
+  // missing doesn't fail the whole call.
+  const wanted = [
+    "likes",
+    "comments",
+    "saved",
+    "shares",
+    "reach",
+    "plays",
+    "views",
+    "total_interactions",
+    "ig_reels_avg_watch_time",
+    "ig_reels_video_view_total_time",
+    "clips_replays_count",
+    "navigation",
+    "profile_visits",
+    "profile_activity",
+  ];
   const result: Insights = {};
 
   for (const metric of wanted) {
@@ -222,6 +244,20 @@ export async function GET(req: NextRequest) {
           if (insights.views !== undefined) updates.views = insights.views;
           if (insights.total_interactions !== undefined) {
             updates.totalInteractions = insights.total_interactions;
+          }
+          if (insights.ig_reels_avg_watch_time !== undefined) {
+            updates.avgWatchTimeMs = insights.ig_reels_avg_watch_time;
+          }
+          if (insights.ig_reels_video_view_total_time !== undefined) {
+            updates.totalWatchTimeMs = insights.ig_reels_video_view_total_time;
+          }
+          if (insights.clips_replays_count !== undefined) {
+            updates.replays = insights.clips_replays_count;
+          }
+          if (insights.navigation !== undefined) updates.navigation = insights.navigation;
+          if (insights.profile_visits !== undefined) updates.profileVisits = insights.profile_visits;
+          if (insights.profile_activity !== undefined) {
+            updates.profileActivity = insights.profile_activity;
           }
           updates.statsSyncedAt = sql`now()` as unknown as Date;
           counts.statsUpdated++;

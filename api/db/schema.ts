@@ -137,6 +137,14 @@ export const reelPosts = pgTable("reel_posts", {
   plays:               integer("plays"),
   views:               integer("views"),
   totalInteractions:   integer("total_interactions"),
+  // Reels-specific deeper metrics (v21). Skipped silently for accounts that
+  // don't qualify (mostly <1000 followers).
+  avgWatchTimeMs:      integer("avg_watch_time_ms"),
+  totalWatchTimeMs:    integer("total_watch_time_ms"),
+  replays:             integer("replays"),
+  navigation:          integer("navigation"),
+  profileVisits:       integer("profile_visits"),
+  profileActivity:     integer("profile_activity"),
   statsSyncedAt:       timestamp("stats_synced_at"),
   createdAt:           timestamp("created_at").defaultNow().notNull(),
 }, (t) => [

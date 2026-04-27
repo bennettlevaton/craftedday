@@ -1,10 +1,12 @@
-import { anthropic } from "./claude";
+import Groq from "groq-sdk";
 import { log, logError } from "./log";
 
-const MODEL = "claude-haiku-4-5";
-const TIMEOUT_MS = 1500;
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const SYSTEM = `You write the closing line of a meditation app's post-session celebration. ONE short sentence. Max 15 words. Warm, observational, specific. No "welcome", no emojis, no spa cliches, no questions, no em-dashes stacking clauses. Don't reference data points by name (don't say "your streak" — say "five days running"). Sound like a person who noticed something, not a system reciting stats. Land it in one breath.`;
+const MODEL = "llama-3.1-8b-instant";
+const TIMEOUT_MS = 800;
+
+const SYSTEM = `You write the closing line of a meditation app's post-session celebration. ONE short sentence. Max 15 words. Warm, observational, specific. No "welcome", no emojis, no spa cliches, no questions, no em-dashes stacking clauses. Don't reference data points by name (don't say "your streak" — say "five days running"). Sound like a person who noticed something, not a system reciting stats. Land it in one breath. Never reference time of day (no "morning", "nights", "evening", "today" as a time-of-day cue) — sessions can happen anytime.`;
 
 export type CelebrationInputs = {
   feeling: "calmer" | "same" | "tense";
@@ -22,7 +24,7 @@ export async function generateCelebration(inputs: CelebrationInputs): Promise<st
       timeout(TIMEOUT_MS),
     ]);
     if (!text) {
-      log("celebration", "timeout, using fallback");
+      log("celebration", "empty or timeout, using fallback");
       return fallback(inputs);
     }
     return text;
@@ -35,16 +37,18 @@ export async function generateCelebration(inputs: CelebrationInputs): Promise<st
 async function callHaiku(inputs: CelebrationInputs): Promise<string | null> {
   const started = Date.now();
   const userMsg = buildUserMessage(inputs);
-  const res = await anthropic.messages.create({
+  const res = await groq.chat.completions.create({
     model: MODEL,
-    max_tokens: 100,
-    system: SYSTEM,
-    messages: [{ role: "user", content: userMsg }],
+    max_tokens: 60,
+    temperature: 0.8,
+    messages: [
+      { role: "system", content: SYSTEM },
+      { role: "user", content: userMsg },
+    ],
   });
   const elapsed = Date.now() - started;
-  const block = res.content.find((c) => c.type === "text");
-  const text = block && block.type === "text" ? block.text.trim() : null;
-  log("celebration", "haiku ok", { elapsed, len: text?.length ?? 0 });
+  const text = res.choices[0]?.message?.content?.trim() ?? null;
+  log("celebration", "groq ok", { elapsed, len: text?.length ?? 0 });
   return text;
 }
 

@@ -27,7 +27,7 @@ export default function Privacy() {
 
       <main className="flex-1 px-6 pb-20 max-w-3xl mx-auto w-full">
         <h1 className="font-serif text-4xl text-primary mb-2 mt-8">Privacy Policy</h1>
-        <p className="text-muted text-sm mb-12">Effective date: April 20, 2026</p>
+        <p className="text-muted text-sm mb-12">Effective date: April 27, 2026</p>
 
         <Section title="Overview">
           <p>
@@ -64,6 +64,7 @@ export default function Privacy() {
             <li><strong className="font-medium">Vercel</strong> — application hosting and serverless functions (vercel.com)</li>
             <li><strong className="font-medium">PlanetScale</strong> — database storage (planetscale.com)</li>
             <li><strong className="font-medium">Anthropic</strong> — AI generation of meditation scripts (anthropic.com). Your prompt and profile context are sent to Anthropic&apos;s API to generate your session script.</li>
+            <li><strong className="font-medium">Groq</strong> — fast AI generation of the short post-session closing line (groq.com). Limited post-session context is sent to Groq to produce a one-sentence celebration line.</li>
             <li><strong className="font-medium">Inworld AI</strong> — text-to-speech voice synthesis (inworld.ai). The generated script is sent to Inworld to produce audio.</li>
             <li><strong className="font-medium">Cloudflare R2</strong> — audio file storage (cloudflare.com). Generated audio files are stored in Cloudflare R2.</li>
             <li><strong className="font-medium">RevenueCat</strong> — subscription management (revenuecat.com). Your app user ID, subscription status, and purchase events are processed by RevenueCat to manage billing on our behalf.</li>

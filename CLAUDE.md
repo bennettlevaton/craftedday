@@ -4,14 +4,11 @@ AI-powered personalized meditation app. User describes their current mood/situat
 
 > **Also read `CODING.md`** for schema, API, Flutter, and general code conventions before making changes.
 
+> **For the daily Instagram reels system, read `REELS.md`.** Separate pipeline (Claude → Replicate → ffmpeg → Buffer → IG) with its own crons, env vars, and quirks. Don't touch `api/lib/reel.ts`, `api/app/api/cron/generate-reel/`, or `api/app/api/cron/sync-reel-meta/` without reading it.
+
 > ⚠️ **Never ship breaking API changes.** The iOS app in production cannot be atomically updated. Renaming/removing JSON fields, changing types, or tightening request validators will crash the App Store build the next time it calls that endpoint. Add new fields alongside old ones; only remove old fields after the older build is confirmed gone. See "Mobile compatibility" in `CODING.md`.
 
 ---
-
-## 🚀 Social Posting
-Trying out buffer - $6/mo
-Trying our replicate - $3/post
-Trying out ig pr
 
 ## 🚀 Launch Checklist
 
@@ -315,6 +312,7 @@ No `users` table — Clerk user ID is the primary key across `user_profiles`, `m
 
 ```
 ANTHROPIC_API_KEY
+GROQ_API_KEY                     # post-session celebration line (llama-3.1-8b-instant)
 IN_WORLD_API                     # base64(client_id:client_secret) for Inworld
 CLERK_SECRET_KEY
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -416,7 +414,7 @@ Daily session date keys use `America/Los_Angeles` so PT users don't lose "today"
 ## Tech Debt + Deferred
 
 **Known issues:**
-- **Stats recompute is O(n) per fetch.** `GET /api/stats` pulls every `meditations` row for the user. Fine at current scale; eventually denormalize `current_streak / total_sessions / total_seconds / last_session_at` onto `user_profiles` and maintain on write.
+- **Stats recompute is O(n) per fetch.** `GET /api/stats` pulls every `meditations` row for the user. Fine at current scale; eventually denormalize `current_streak / total_sessions / total_seconds / last_session_at` onto `user_profiles` and maintain on write. Also affects `/checkin` latency — celebration waits on stats compute (~400ms locally, less in prod). Pattern: recompute streak inside the same tx that writes the session (no increment-skew, self-healing). Separately worth considering a `monthly_user_stats` rollup table when we build trends UI for the profile screen.
 - **RC webhook has no event-ID dedupe.** `openNewPeriod` is idempotent on `(clerkId, periodStart)` and self-heals lingering open rows, but we don't persist `event.id`. Long term: add a `webhook_events` table keyed on RC event id.
 - **Worker's daily-session date inconsistency.** `worker/route.ts:todayEst()` uses `America/New_York` while `lib/daily.ts:todayPacific()` uses LA. Since cron fires at midnight PT (3am ET) and worker completes within a few minutes, both resolve to the same date in practice — but they should be unified to one timezone helper to prevent latent drift.
 
@@ -444,6 +442,7 @@ Daily session date keys use `America/Los_Angeles` so PT users don't lose "today"
 - **Beginner scaffolding by `sessionNumber`.** Sessions 1–2 limited to belly-button anchor + layered breath; 3–5 add gentle body scan + cloud suspension; 6–10 allow full library with one heavy technique max. Lives in the planner prompt only — kept out of the cached writer system prompt so caching stays effective.
 - **Grace technique library (`TECHNIQUE_CUES`).** Nine named techniques drawn from real Grace transcripts: belly-button anchor (the house anchor), layered breath, top-down body scan, brain drain valve, cloud suspension, black specks release, roots-and-earth-energy, intention rehearsal, forceful exhale close. The Haiku planner picks 1–3 per session and tags them per section; the Opus writer pulls the cue text into the section prompt and phrases in its own voice.
 - **`what_helped` is multi-select varchar[] with 8 buckets.** `breath, body, belly_anchor, release, silence, visualization, voice, pacing`. Replaced the original 4-bucket single-select. Aggregated into top-3 in the preference summary.
+- **Post-session celebration line runs on Groq `llama-3.1-8b-instant`, not Anthropic Haiku.** Haiku was ~1.0–1.2s, blocking the post-checkin transition. Groq lands in ~150–250ms (1000 tok/s, ~150ms TTFT). System prompt + fallback unchanged. Timeout tightened from 1500ms → 800ms. Adds Groq as a new sub-processor — privacy policy at `craftedday.com/privacy` needs to list it alongside Anthropic and Inworld.
 - **Preference summary refresh uses Next.js `after()`.** Was previously fire-and-forget right before the response — Vercel froze the runtime post-response and the 2–5s Sonnet call got cut off, leaving summaries stale. Now wrapped in `after()` so it runs to completion within `maxDuration`. If the work ever grows past ~10s or starts needing retries, migrate to a queue (pattern is identical to meditation generation).
 - **Notification timezone fix (flutter_timezone).** `tz.initializeTimeZones()` only loads the IANA database — `tz.local` stays at UTC. Added `flutter_timezone` to detect the device's zone and `tz.setLocalLocation()` so 8am means 8am wall-clock, not 8am UTC.
 - **Daily session timezone is PT (`America/Los_Angeles`).** UTC-based date rollover made "today" disappear at 4–5pm PT. Cron fires at 8am UTC (midnight PT). Endpoint and `lib/daily.ts` both use `todayPacific()`. Worker's `todayEst()` is a known inconsistency (see Tech Debt).

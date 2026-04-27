@@ -329,19 +329,47 @@ function runFfmpeg(args: string[]): Promise<void> {
 }
 
 // ---------- Upload ----------
+//
+// Two destinations per reel:
+//   • Vercel Blob — long-term storage, URL goes into reel_posts.videoUrl for
+//     archive/replay/history.
+//   • tmpfiles.org — short-lived (~1hr) URL handed to Buffer for IG publish.
+//     IG's Graph API media fetcher choked with `ERROR: ERROR` on every "real"
+//     host we tried (R2 pub-xxx.r2.dev, R2 behind cdn.craftedday.com, and
+//     Vercel Blob's *.public.blob.vercel-storage.com). The exact same file
+//     posted successfully when fetched from tmpfiles. We don't know why IG's
+//     fetcher tolerates tmpfiles and not the others. If tmpfiles ever stops
+//     working, swap to file.io or stand up our own minimal /tmp server.
 
-// Reels live on Vercel Blob, NOT R2. Instagram's media-fetcher chokes on R2-
-// backed URLs (both pub-xxx.r2.dev and custom-domain proxied) and returns the
-// generic "ERROR: ERROR" from the Graph API container endpoint. Same file
-// served from any non-R2 host publishes fine. Meditation audio still uses
-// R2 — only social-publish video moved.
 async function uploadToBlob(localPath: string, date: string): Promise<string> {
   const blob = await put(`reels/${date}.mp4`, readFileSync(localPath), {
     access: "public",
     contentType: "video/mp4",
-    // Blob adds a random suffix by default → unique URL per generation.
+    addRandomSuffix: true,   // Blob v2 defaults to false
   });
   return blob.url;
+}
+
+async function uploadToTmpfiles(localPath: string): Promise<string> {
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([readFileSync(localPath)], { type: "video/mp4" }),
+    "reel.mp4",
+  );
+  const res = await fetch("https://tmpfiles.org/api/v1/upload", {
+    method: "POST",
+    body: form,
+  });
+  const json = (await res.json()) as { status?: string; data?: { url?: string } };
+  if (json.status !== "success" || !json.data?.url) {
+    throw new Error(`tmpfiles upload failed: ${JSON.stringify(json)}`);
+  }
+  // Response gives http://tmpfiles.org/<id>/<filename> — IG needs the
+  // /dl/ direct-download path over https.
+  return json.data.url
+    .replace(/^http:/, "https:")
+    .replace("tmpfiles.org/", "tmpfiles.org/dl/");
 }
 
 // ---------- Buffer ----------
@@ -418,15 +446,20 @@ export async function generateAndPostReel(opts: {
     await renderReel(backgroundPath, post.quote, reelPath);
     log("reel", "render:done");
 
-    log("reel", "blob:upload");
-    const publicUrl = await uploadToBlob(reelPath, date);
-    log("reel", "blob:done", { publicUrl });
+    // Upload to both in parallel: Blob for permanent storage (DB record),
+    // tmpfiles for the IG-fetchable URL we hand to Buffer.
+    log("reel", "upload:start");
+    const [blobUrl, tmpfilesUrl] = await Promise.all([
+      uploadToBlob(reelPath, date),
+      uploadToTmpfiles(reelPath),
+    ]);
+    log("reel", "upload:done", { blobUrl, tmpfilesUrl });
 
     log("reel", "buffer:post");
-    const bufferPostId = await postToBuffer(post, publicUrl);
+    const bufferPostId = await postToBuffer(post, tmpfilesUrl);
     log("reel", "buffer:done", { bufferPostId });
 
-    return { post, theme, publicUrl, bufferPostId };
+    return { post, theme, publicUrl: blobUrl, bufferPostId };
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }

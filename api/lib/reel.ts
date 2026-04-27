@@ -20,7 +20,7 @@ import { pipeline } from "stream/promises";
 import { put } from "@vercel/blob";
 import { log } from "@/lib/log";
 
-const FONT_PATH = join(process.cwd(), "lib/fonts/Fraunces144pt-SemiBold.ttf");
+const FONT_PATH = join(process.cwd(), "lib/fonts/Fraunces144pt-Bold.ttf");
 const TARGET_WIDTH = 1080;
 const TARGET_HEIGHT = 1920;
 
@@ -101,26 +101,41 @@ Today's theme seed: **${theme}** — interpret loosely. The quote and scene shou
 
 ${recentQuotesBlock}${recentVisualsBlock}Output JSON with this exact shape:
 {
-  "quote": string,           // 6 to 16 words. Sharp, calm, emotionally resonant. No emojis. No clichés.
+  "quote": string,           // 4 to 14 words. Sharp, calm, emotionally resonant. No emojis. No clichés.
   "caption": string,         // 2-4 short lines separated by \\n\\n. Reflective, soft CTA at the end. No emojis.
   "hashtags": string[],      // 3-6 lowercase tags, each starting with #. Always include #craftedday. Other tags should pull meditation/mindfulness/calm-aesthetic audiences (e.g. #meditation, #stillness, #morningroutine, #mindfulness, #calm, #innerwork, #presence, #slowliving).
   "visualPrompt": string     // Vertical 9:16 cinematic meditation background. See visual rules below.
 }
 
-QUOTE: Sharp, calm, emotionally resonant. **6–16 words.** Should land for someone whose day is uniquely chaotic / heavy / scattered, and quietly suggest there's a calmer way to meet *today specifically*.
+QUOTE — this is the most important field, the one that sits as huge text overlaid on the video. **Treat it as the headline of the post.**
 
-CRITICAL — the quote must make sense on first read. Not cryptic. Not riddle-like. Not the kind of line that sounds wise on Instagram and means nothing five seconds later. If a stranger reading it once couldn't paraphrase what you mean, it's wrong.
+Length: 4–14 words.
+Tone: sharp, calm, emotionally resonant.
+Subject: a specific everyday moment a meditation-curious person has actually had — names the feeling, names the situation. Not abstract spiritual talk.
 
-Hits the right register:
-  - "Today's mind isn't yesterday's mind."
-  - "Some days don't need an hour. Some days need a minute."
-  - "The meditation that fits the day you're actually having."
-  - "Stillness is a skill."
-  - "You don't need a calmer life. You need five minutes inside this one."
-  - "Most days I just need to remember I have a body."
+INTERNAL PROCESS (do this in your thinking):
+1. Brainstorm 5–7 candidate lines for today's theme.
+2. For each, ask: "If a stranger saw this on Instagram with no other context, would they screenshot it?" If no, cut it.
+3. Pick the strongest. That's the quote.
+4. The remaining strong candidates become the opening of the caption — never let your best line live in the caption while a weaker one is the quote.
 
-Wrong — vague aphorism that says nothing:
+CRITICAL — must make sense on first read. Not cryptic. Not riddle-like. Not the kind of line that sounds wise on Instagram and means nothing five seconds later. If a stranger reading it once couldn't paraphrase what you mean, it's wrong.
+
+Hits the right register — calibrate to the Yung Pueblo / Sarah Blondin level of meditation Instagram. Direct address. Names a specific thought-pattern or moment. Reframes it. Tone of someone who's done the work:
+  - "Throw away the idea that you need to pause your life until you're healed."
+  - "A real sign of progress is when you stop punishing yourself for being imperfect."
+  - "You don't have to think your way out of feeling something."
+  - "Forcing yourself to be happy isn't healing. Being honest about what you feel is."
+  - "You are not behind. You were resting."
+  - "If a thought keeps coming back, it wants to be felt — not solved."
+  - "Your peace doesn't depend on someone else changing."
+  - "Rest isn't something you have to earn."
+  - "Healing rarely looks like progress. Sometimes it looks like staying still."
+  - "Worry is not preparation."
+
+Wrong — vague aphorism that sounds spiritual but says nothing specific:
   - "Arrive before you organize."
+  - "Endings deserve the same attention as beginning."
   - "Stillness becomes you."
   - "The center holds."
   - "Light finds shape."
@@ -152,8 +167,9 @@ Return JSON only. No prose, no markdown fence.`;
 async function generateConcept(opts: { theme: string; history: ReelHistory }): Promise<Post> {
   const res = await anthropic.messages.create({
     model: "claude-opus-4-7",
-    max_tokens: 800,
+    max_tokens: 8000,
     temperature: 1,
+    thinking: { type: "enabled", budget_tokens: 5000 },
     system: CONCEPT_SYSTEM,
     messages: [{ role: "user", content: conceptUserPrompt(opts) }],
   });
@@ -168,8 +184,8 @@ async function generateConcept(opts: { theme: string; history: ReelHistory }): P
 
   const parsed = JSON.parse(jsonMatch[0]) as Post;
   const wc = parsed.quote ? parsed.quote.split(/\s+/).length : 0;
-  if (!parsed.quote || wc < 4 || wc > 18)
-    throw new Error(`Quote must be 6-16 words (got ${wc}): "${parsed.quote}"`);
+  if (!parsed.quote || wc < 3 || wc > 16)
+    throw new Error(`Quote must be 4-14 words (got ${wc}): "${parsed.quote}"`);
   if (!parsed.caption) throw new Error("Caption missing");
   if (!parsed.hashtags || parsed.hashtags.length < 3 || parsed.hashtags.length > 6)
     throw new Error(`Hashtags must be 3-6, got ${parsed.hashtags?.length}`);

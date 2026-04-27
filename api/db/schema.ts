@@ -1,5 +1,5 @@
 import { desc } from "drizzle-orm";
-import { pgTable, varchar, text, integer, timestamp, boolean, index, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, varchar, text, integer, timestamp, boolean, index, primaryKey, serial } from "drizzle-orm/pg-core";
 
 // No users table — Clerk provides the user ID directly on every request.
 // user_profiles.user_id and meditations.user_id are Clerk user IDs.
@@ -104,4 +104,22 @@ export const meditations = pgTable("meditations", {
   // query (user_id) ordered by created_at desc. Without this the planner sorts
   // every user-row set on each call.
   index("meditations_user_created_idx").on(t.userId, desc(t.createdAt)),
+]);
+
+// Daily Instagram reel generator. One row per successfully posted reel.
+// Used to feed past quotes/prompts back into the generator so it doesn't
+// repeat itself. Multiple rows per date are allowed — we may post >1/day.
+export const reelPosts = pgTable("reel_posts", {
+  id:            serial("id").primaryKey(),
+  date:          varchar("date", { length: 10 }).notNull(),  // YYYY-MM-DD pacific
+  quote:         text("quote").notNull(),
+  caption:       text("caption").notNull(),
+  hashtags:      varchar("hashtags", { length: 64 }).array().notNull(),
+  visualPrompt:  text("visual_prompt").notNull(),
+  theme:         varchar("theme", { length: 64 }),
+  videoUrl:      text("video_url"),
+  bufferPostId:  varchar("buffer_post_id", { length: 128 }),
+  createdAt:     timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("reel_posts_created_at_idx").on(desc(t.createdAt)),
 ]);

@@ -12,6 +12,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import { spawn } from "child_process";
+import { randomBytes } from "crypto";
 import { createWriteStream, readFileSync } from "fs";
 import { mkdir, rm } from "fs/promises";
 import { join } from "path";
@@ -172,10 +173,7 @@ async function generateBackground(visualPrompt: string, outPath: string) {
           aspect_ratio: "9:16",
           duration: REEL_SECONDS,
           mode: "4k",
-          // IG flags AI-generated audio as copyright. Silent for now;
-          // ElevenLabs ambient music will be chained in once we confirm
-          // silent reels publish successfully.
-          generate_audio: false,
+          generate_audio: true,
           negative_prompt:
             "letterbox, black bars, black borders, film matte, frame border, " +
             "vignette, dark edges, pillarbox, widescreen bars, " +
@@ -295,7 +293,6 @@ async function renderReel(backgroundPath: string, quote: string, outPath: string
     "-i", backgroundPath,
     "-t", String(REEL_SECONDS),
     "-vf", filter,
-    "-an",
     "-c:v", "libx264",
     "-profile:v", "main",
     "-level", "4.0",
@@ -311,6 +308,10 @@ async function renderReel(backgroundPath: string, quote: string, outPath: string
     "-color_trc", "bt709",
     "-colorspace", "bt709",
     "-color_range", "tv",
+    "-c:a", "aac",
+    "-b:a", "128k",
+    "-ar", "48000",
+    "-ac", "2",
     "-movflags", "+faststart",
     outPath,
   ]);
@@ -332,7 +333,7 @@ function runFfmpeg(args: string[]): Promise<void> {
 // ---------- Upload ----------
 
 async function uploadToR2(localPath: string, date: string): Promise<string> {
-  const key = `reels/${date}.mp4`;
+  const key = `reels/${date}-${randomBytes(4).toString("hex")}.mp4`;
   await r2.send(
     new PutObjectCommand({
       Bucket: R2_BUCKET,

@@ -57,13 +57,24 @@ export function pickTheme(): string {
 
 // ---------- Concept ----------
 
-const CONCEPT_SYSTEM = `You are the editorial voice for CraftedDay, an AI-powered personalized meditation app.
+const CONCEPT_SYSTEM = `You are the editorial voice for CraftedDay's Instagram.
 
-Your audience: people who already meditate or want to. Calm, reflective, slightly skeptical of generic wellness sludge.
+WHAT CRAFTEDDAY IS:
+- An AI-generated personalized meditation app. The user describes their current mood/situation, the app generates a custom ~5-minute guided meditation that fits that exact day, and they listen.
+- The hook is "the meditation made for the day you're already having" — not another library of canned 30-min sessions, but one specifically shaped to what's happening for you right now.
 
-Aesthetic: spa-like, warm, luxe — NOT techy, NOT hype, NOT affirmation cliché.
+YOUR JOB:
+Every reel is a magnet for the person who would actually buy CraftedDay. That person:
+- Already meditates occasionally or wants to but bounces off Calm/Headspace because the content doesn't fit their actual state.
+- Has a busy, often anxious, modern life. Wants stillness in 5 minutes, not an hour.
+- Is skeptical of generic affirmation slop ("You are enough", "Breathe and be happy").
+- Trusts quiet specificity over hype.
 
-You have creative latitude. Surprise the reader. Don't recycle the obvious meditation-influencer phrasings. Output strict JSON only.`;
+So the quote/caption shouldn't be a random meditation platitude — it should resonate *specifically* with someone who needs a fresh, today-shaped meditation. Hint at the app's value (today-specific, brief, personal) without being adsy. The reel is a feeling, not an ad — but the feeling is curated for *this* buyer.
+
+AESTHETIC: spa-like, warm, luxe — NOT techy, NOT hype, NOT affirmation cliché.
+
+Output strict JSON only.`;
 
 function conceptUserPrompt(opts: { theme: string; history: ReelHistory }) {
   const { theme, history } = opts;
@@ -84,13 +95,23 @@ ${recentQuotesBlock}${recentVisualsBlock}Output JSON with this exact shape:
 {
   "quote": string,           // <= 10 words, sharp, calm, emotionally resonant. No emojis. No clichés.
   "caption": string,         // 2-4 short lines separated by \\n\\n. Reflective, soft CTA at the end. No emojis.
-  "hashtags": string[],      // 3-6 lowercase tags, each starting with #
+  "hashtags": string[],      // 3-6 lowercase tags, each starting with #. Always include #craftedday. Other tags should pull meditation/mindfulness/calm-aesthetic audiences (e.g. #meditation, #stillness, #morningroutine, #mindfulness, #calm, #innerwork, #presence, #slowliving).
   "visualPrompt": string     // Vertical 9:16 cinematic meditation background. See visual rules below.
 }
 
-QUOTE: Sharp, calm, emotionally resonant. <=10 words. No emojis. No "breathe and be happy" affirmation cliché. No "you are enough". Examples of the right register: "Peace starts where control ends." / "Stillness is a skill." / "You are not your next thought." But invent something fresh — these are calibration only, not a template.
+QUOTE: Sharp, calm, emotionally resonant. <=10 words. No emojis. No "breathe and be happy" affirmation cliché. No "you are enough." It should land for someone whose day is uniquely chaotic / heavy / scattered — and quietly suggest there's a calmer way to meet *today specifically*. Hits the right register:
+  - "Today's mind isn't yesterday's mind."
+  - "Some days don't need an hour. Some days need a minute."
+  - "The meditation that fits the day you're actually having."
+  - "Stillness is a skill."
+Calibration only — invent something fresh.
 
-CAPTION: 2–4 short lines, reflective, slightly direct. Soft CTA at end (e.g. "try it tonight" / "let it sit").
+CAPTION: 2–3 short lines, reflective, slightly direct. The last line is a soft pull toward the app — never salesy, never "download now." Good closers:
+  - "A fresh one's waiting in CraftedDay."
+  - "CraftedDay makes you a new one every morning."
+  - "Open CraftedDay and tell it what kind of day it is."
+  - "Built for the day you're already in. CraftedDay."
+Vary the closer. Don't repeat the same phrasing across posts.
 
 VISUAL PROMPT: A calm cinematic background, vertical 9:16, photorealistic, shallow depth of field. Pick from one of these worlds and invent the specific image — don't lift the examples:
   • Nature (forests, water, light, weather, mountains, deserts, fields)

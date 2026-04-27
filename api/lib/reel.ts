@@ -172,7 +172,10 @@ async function generateBackground(visualPrompt: string, outPath: string) {
           aspect_ratio: "9:16",
           duration: REEL_SECONDS,
           mode: "4k",
-          generate_audio: true,
+          // IG flags AI-generated audio as copyright. Silent for now;
+          // ElevenLabs ambient music will be chained in once we confirm
+          // silent reels publish successfully.
+          generate_audio: false,
           negative_prompt:
             "letterbox, black bars, black borders, film matte, frame border, " +
             "vignette, dark edges, pillarbox, widescreen bars, " +
@@ -286,12 +289,18 @@ async function renderReel(backgroundPath: string, quote: string, outPath: string
   // H.264 Main/4.0, 30fps CFR, closed GOP every 2s, no B-frames, AAC 48kHz
   // stereo 128k, +faststart. Buffer rejects on broader tolerances than IG
   // itself does, so we lock everything down.
+  // Silent audio track via anullsrc — some IG processing pipelines reject
+  // videos with no audio stream at all. We give them an empty one.
   await runFfmpeg([
     "-y",
     "-stream_loop", "-1",
     "-i", backgroundPath,
+    "-f", "lavfi",
+    "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
     "-t", String(REEL_SECONDS),
     "-vf", filter,
+    "-map", "0:v",
+    "-map", "1:a",
     "-c:v", "libx264",
     "-profile:v", "main",
     "-level", "4.0",
@@ -311,6 +320,7 @@ async function renderReel(backgroundPath: string, quote: string, outPath: string
     "-b:a", "128k",
     "-ar", "48000",
     "-ac", "2",
+    "-shortest",
     "-movflags", "+faststart",
     outPath,
   ]);

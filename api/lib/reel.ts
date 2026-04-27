@@ -289,18 +289,13 @@ async function renderReel(backgroundPath: string, quote: string, outPath: string
   // H.264 Main/4.0, 30fps CFR, closed GOP every 2s, no B-frames, AAC 48kHz
   // stereo 128k, +faststart. Buffer rejects on broader tolerances than IG
   // itself does, so we lock everything down.
-  // Silent audio track via anullsrc — some IG processing pipelines reject
-  // videos with no audio stream at all. We give them an empty one.
   await runFfmpeg([
     "-y",
     "-stream_loop", "-1",
     "-i", backgroundPath,
-    "-f", "lavfi",
-    "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
     "-t", String(REEL_SECONDS),
     "-vf", filter,
-    "-map", "0:v",
-    "-map", "1:a",
+    "-an",
     "-c:v", "libx264",
     "-profile:v", "main",
     "-level", "4.0",
@@ -316,11 +311,6 @@ async function renderReel(backgroundPath: string, quote: string, outPath: string
     "-color_trc", "bt709",
     "-colorspace", "bt709",
     "-color_range", "tv",
-    "-c:a", "aac",
-    "-b:a", "128k",
-    "-ar", "48000",
-    "-ac", "2",
-    "-shortest",
     "-movflags", "+faststart",
     outPath,
   ]);

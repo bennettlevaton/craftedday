@@ -119,12 +119,26 @@ export const reelPosts = pgTable("reel_posts", {
   theme:         varchar("theme", { length: 64 }),
   videoUrl:      text("video_url"),
   bufferPostId:  varchar("buffer_post_id", { length: 128 }),
-  // Backfilled by /api/cron/sync-reel-meta after Buffer pushes to IG. Lets us
-  // click through to view per-post stats manually until we wire IG Graph API.
-  instagramPostId:    varchar("instagram_post_id", { length: 128 }),
-  instagramPermalink: text("instagram_permalink"),
-  metaSyncedAt:       timestamp("meta_synced_at"),
-  createdAt:          timestamp("created_at").defaultNow().notNull(),
+  // Backfilled by /api/cron/sync-reel-meta after Buffer pushes to IG.
+  // instagramShortcode = the URL slug (e.g. "CtAbC123") for click-through.
+  // instagramMediaId   = the numeric Graph API id (e.g. "17912345678901234"),
+  //                      required for /insights queries.
+  instagramPostId:     varchar("instagram_post_id", { length: 128 }),       // shortcode (kept for backward compat)
+  instagramMediaId:    varchar("instagram_media_id", { length: 64 }),       // numeric id for Graph API
+  instagramPermalink:  text("instagram_permalink"),
+  metaSyncedAt:        timestamp("meta_synced_at"),
+  // Engagement metrics from IG Graph API. Null until first stats sync.
+  // Note: most metrics return empty for accounts < 1000 followers.
+  likes:               integer("likes"),
+  comments:            integer("comments"),
+  saves:               integer("saves"),
+  shares:              integer("shares"),
+  reach:               integer("reach"),
+  plays:               integer("plays"),
+  views:               integer("views"),
+  totalInteractions:   integer("total_interactions"),
+  statsSyncedAt:       timestamp("stats_synced_at"),
+  createdAt:           timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("reel_posts_created_at_idx").on(desc(t.createdAt)),
 ]);

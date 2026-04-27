@@ -121,6 +121,12 @@ INTERNAL PROCESS (do this in your thinking):
 
 CRITICAL — must make sense on first read. Not cryptic. Not riddle-like. Not the kind of line that sounds wise on Instagram and means nothing five seconds later. If a stranger reading it once couldn't paraphrase what you mean, it's wrong.
 
+PLAIN LANGUAGE ONLY. Words a 12-year-old uses every day. No fancy vocabulary. No SAT words. No legal/academic/clinical words. Bad words to never use in a quote:
+  re-litigate, contemplate, reconcile, manifest, surrender (as a verb), align,
+  attune, regulate, embodied, sovereign, dichotomy, paradox, cultivate,
+  invitation (as in "this is an invitation to..."), holding (as in "holding space").
+If a meditation-app marketing person from 2019 would say it, don't.
+
 Hits the right register — calibrate to the Yung Pueblo / Sarah Blondin level of meditation Instagram. Direct address. Names a specific thought-pattern or moment. Reframes it. Tone of someone who's done the work:
   - "Throw away the idea that you need to pause your life until you're healed."
   - "A real sign of progress is when you stop punishing yourself for being imperfect."

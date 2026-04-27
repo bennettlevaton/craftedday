@@ -8,6 +8,11 @@ AI-powered personalized meditation app. User describes their current mood/situat
 
 ---
 
+## 🚀 Social Posting
+Trying out buffer - $6/mo
+Trying our replicate - $3/post
+Trying out ig pr
+
 ## 🚀 Launch Checklist
 
 ### 1. Apple Developer Account ($99/yr)

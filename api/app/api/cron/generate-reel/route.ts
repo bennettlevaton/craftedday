@@ -8,7 +8,7 @@ import { log, logError } from "@/lib/log";
 export const runtime = "nodejs";
 export const maxDuration = 800;
 
-const HISTORY_LOOKBACK = 60;  // last N posts fed back to Claude as anti-repeat
+const HISTORY_LOOKBACK = 120;  // last N posts fed back to Claude as anti-repeat
 
 function todayPacific(): string {
   return new Intl.DateTimeFormat("en-CA", {

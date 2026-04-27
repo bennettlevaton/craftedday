@@ -280,15 +280,24 @@ function wrapInto(quote: string, n: number): string[] {
   return lines;
 }
 
-function layoutQuote(quote: string, maxTextWidth: number, ceiling: number) {
-  const candidates = [1, 2, 3].map((n) => {
+// Pick the line wrap that yields the largest font without overflowing
+// `maxTextWidth`. The 0.58 char-width factor is a conservative estimate for
+// Fraunces Bold and includes a small safety buffer. Prefer candidates whose
+// natural fit clears `floor`; if none do (very long quote), fall back to the
+// candidate with the largest fit and accept a sub-floor font rather than
+// overflow the frame.
+function layoutQuote(quote: string, maxTextWidth: number, ceiling: number, floor: number) {
+  const candidates = [1, 2, 3, 4, 5, 6].map((n) => {
     const lines = wrapInto(quote, n);
     const longest = Math.max(...lines.map((l) => l.length));
-    const fit = Math.floor(maxTextWidth / (longest * 0.52));
-    return { lines, fontsize: Math.min(ceiling, fit) };
+    const fit = Math.floor(maxTextWidth / (longest * 0.58));
+    return { lines, fit };
   });
-  candidates.sort((a, b) => b.fontsize - a.fontsize);
-  return candidates[0];
+  const viable = candidates.filter((c) => c.fit >= floor);
+  const pool = viable.length ? viable : candidates;
+  pool.sort((a, b) => b.fit - a.fit);
+  const best = pool[0];
+  return { lines: best.lines, fontsize: Math.min(ceiling, best.fit) };
 }
 
 function escDrawtext(s: string): string {
@@ -296,10 +305,11 @@ function escDrawtext(s: string): string {
 }
 
 async function renderReel(backgroundPath: string, quote: string, outPath: string) {
-  const SIDE_MARGIN = 88;
+  // 120px each side ≈ 11% — leaves headroom against IG's center-crop preview
+  // (the in-feed thumbnail clips slightly tighter than the full reel frame).
+  const SIDE_MARGIN = 120;
   const maxTextWidth = TARGET_WIDTH - SIDE_MARGIN * 2;
-  const { lines, fontsize: fitFontsize } = layoutQuote(quote, maxTextWidth, 200);
-  const fontsize = Math.max(96, fitFontsize);
+  const { lines, fontsize } = layoutQuote(quote, maxTextWidth, 200, 96);
   const lineGap = Math.round(fontsize * 0.18);
 
   const blockCenterY = `h*0.36`;

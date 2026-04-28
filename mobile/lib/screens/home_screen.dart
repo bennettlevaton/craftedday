@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../models/meditation.dart';
 import '../services/api_service.dart';
 import '../services/music_service.dart';
@@ -723,8 +724,13 @@ class _LoadingOverlayState extends State<_LoadingOverlay>
     with TickerProviderStateMixin {
   late final AnimationController _breathController;
   late final AnimationController _fadeController;
-  AudioPlayer? _cuePlayer;
+  final AudioPlayer _cuePlayer = AudioPlayer();
+  // Default to female — matches the app default and lets cue 0 fire
+  // immediately without waiting on /api/user/me. Updated lazily if the
+  // user is on the (currently hidden) male toggle.
+  String _gender = 'female';
   int _cueIndex = 0;
+  bool _disposed = false;
 
   static const _cues = [
     'Settling in — your session is on its way.',
@@ -759,56 +765,60 @@ class _LoadingOverlayState extends State<_LoadingOverlay>
       duration: const Duration(milliseconds: 600),
     )..value = 1;
 
-    _initCuePlayer();
-    _scheduleCue();
+    // Generation can take 30s+; without this iOS will dim/lock the screen
+    // mid-load and the user comes back to a black phone.
+    WakelockPlus.enable();
+
+    _cuePlayer.setVolume(1.0);
+    _playCue(0);
+    _resolveGender();
+    _scheduleCues();
   }
 
-  Future<void> _initCuePlayer() async {
+  Future<void> _resolveGender() async {
     try {
       final me = await apiService.getMe();
-      final gender = me.voiceGender == 'male' ? 'male' : 'female';
-      _cuePlayer = AudioPlayer();
-      await _cuePlayer!.setVolume(1.0);
-      await _playCue(gender, 0);
+      if (_disposed) return;
+      final resolved = me.voiceGender == 'male' ? 'male' : 'female';
+      if (resolved != _gender) _gender = resolved;
     } catch (_) {
-      // Non-fatal — cues play silently if audio fails
+      // Stay on the female default — the assets always exist for it.
     }
   }
 
-  Future<void> _playCue(String gender, int index) async {
-    if (_cuePlayer == null || !mounted) return;
+  Future<void> _playCue(int index) async {
+    if (_disposed) return;
     try {
       final path =
-          'assets/audio/breathing/$gender/cue_${index.toString().padLeft(2, '0')}.mp3';
-      await _cuePlayer!.setAsset(path);
-      await _cuePlayer!.play();
-    } catch (_) {}
+          'assets/audio/breathing/$_gender/cue_${index.toString().padLeft(2, '0')}.mp3';
+      await _cuePlayer.setAsset(path);
+      if (_disposed) return;
+      await _cuePlayer.play();
+    } catch (e) {
+      debugPrint('Loading cue failed (index $index): $e');
+    }
   }
 
-  Future<void> _scheduleCue() async {
-    String gender = 'female';
-    try {
-      final me = await apiService.getMe();
-      gender = me.voiceGender == 'male' ? 'male' : 'female';
-    } catch (_) {}
-
-    while (mounted) {
+  Future<void> _scheduleCues() async {
+    while (!_disposed && mounted) {
       await Future.delayed(const Duration(seconds: 6));
-      if (!mounted) return;
+      if (_disposed || !mounted) return;
       await _fadeController.reverse();
-      if (!mounted) return;
+      if (_disposed || !mounted) return;
       final nextIndex = (_cueIndex + 1) % _cues.length;
       setState(() => _cueIndex = nextIndex);
       _fadeController.forward();
-      _playCue(gender, nextIndex);
+      _playCue(nextIndex);
     }
   }
 
   @override
   void dispose() {
+    _disposed = true;
+    WakelockPlus.disable();
     _breathController.dispose();
     _fadeController.dispose();
-    _cuePlayer?.dispose();
+    _cuePlayer.dispose();
     super.dispose();
   }
 

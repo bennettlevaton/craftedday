@@ -102,7 +102,7 @@ Today's theme seed: **${theme}** — interpret loosely. The quote and scene shou
 ${recentQuotesBlock}${recentVisualsBlock}Output JSON with this exact shape:
 {
   "quote": string,           // 4 to 14 words. Sharp, calm, emotionally resonant. No emojis. No clichés.
-  "caption": string,         // 2-4 short lines separated by \\n\\n. Reflective, soft CTA at the end. No emojis.
+  "caption": string,         // 2-3 short lines separated by \\n\\n (max 3). Reflective, soft CTA at the end. Each line adds a NEW beat — never paraphrase or explain the quote. No emojis.
   "hashtags": string[],      // 3-6 lowercase tags, each starting with #. Always include #craftedday. Other tags should pull meditation/mindfulness/calm-aesthetic audiences (e.g. #meditation, #stillness, #morningroutine, #mindfulness, #calm, #innerwork, #presence, #slowliving).
   "visualPrompt": string     // Vertical 9:16 cinematic meditation background. See visual rules below.
 }
@@ -127,17 +127,34 @@ PLAIN LANGUAGE ONLY. Words a 12-year-old uses every day. No fancy vocabulary. No
   invitation (as in "this is an invitation to..."), holding (as in "holding space").
 If a meditation-app marketing person from 2019 would say it, don't.
 
-Hits the right register — name an observable behavior or body state the reader instantly recognizes as themselves. Not a belief, not a reframe, not wisdom. The "shit, this is me" line that gets screenshotted and DMed to a friend. Tone is warm and direct, never preachy:
-  - "you've been holding your shoulders up since 9am."
-  - "rereading the text three times before you send it isn't caring more — it's anxiety."
-  - "checking your email in bed is not rest."
-  - "the 3pm crash where you can't read another email isn't laziness."
-  - "you're scrolling because you don't want to feel what's underneath."
-  - "you haven't taken a real breath since you opened your laptop."
-  - "the pit in your stomach before a sunday night isn't dramatic. it's real."
-  - "watching one more episode is not the same as decompressing."
-  - "you've been clenching your jaw the whole meeting."
-  - "answering one more email is not winding down."
+Hits the right register — name an observable behavior or body state the reader instantly recognizes as themselves. Not a belief, not a reframe, not wisdom. The "shit, this is me" line that gets screenshotted and DMed to a friend. Tone is warm and direct, never preachy.
+
+HOOK BANK — pick one structure, weighted toward the top:
+
+1. JUXTAPOSITION (~35% — strongest pattern). Two clauses: one place the body/clock has moved on, another place the mind/nervous system hasn't. Almost always lands.
+   - "your body is in bed. your jaw is still in the meeting."
+   - "the car is parked. your mind is still driving."
+   - "the conversation ended hours ago. your mind is still in it."
+   - "you closed the laptop an hour ago. your shoulders haven't."
+
+2. UNNOTICED HABIT (~20%). Catch the reader doing the thing they didn't realize they were doing.
+   - "you finally sat down and immediately picked up your phone."
+   - "you stopped tasting your coffee three sips in."
+   - "you've read that sentence three times and don't know what it said."
+
+3. BODY TENSION (~20%). Name a specific somatic clench, anchored to a time.
+   - "you've been holding your shoulders up since 9am."
+   - "you've been clenching your jaw the whole meeting."
+   - "you haven't taken a real breath since you opened your laptop."
+
+4. MODERN WORK FATIGUE (~15%). Slack/inbox/laptop dissociation, post-work decompression failure.
+   - "you started the day inside other people's emergencies."
+   - "watching one more episode is not the same as decompressing."
+   - "answering one more email is not winding down."
+
+5. SELF-TALK (~10%). The gap between how you talk to others and how you talk to yourself.
+   - "you speak to everyone more gently than you speak to yourself."
+   - "rereading the text three times before you send it isn't caring more — it's anxiety."
 
 Wrong — universal aphorism / wisdom drop with no specific moment named (sounds profound, slides off):
   - "Worry is not preparation."
@@ -153,12 +170,34 @@ Test: if the line could appear on a Yung Pueblo tile unchanged, it's wrong. The 
 
 No emojis. No "breathe and be happy" affirmation cliché. No "you are enough." Calibration only — invent something fresh.
 
-CAPTION: 2–3 short lines, reflective, slightly direct. The last line is a soft pull toward the app — never salesy, never "download now." Good closers:
-  - "A fresh one's waiting in CraftedDay."
+CAPTION: 2–3 short lines (max 3), separated by \\n\\n. The caption must extend the quote, not soften or summarize it.
+
+EVERY caption line must be as concrete as the quote. Same register: name a body, a behavior, a real moment. No "soft wellness filler" — no "honor your nervous system," "give yourself grace," "trust the process," "your body is wisdom," "presence is a gift." If a line could appear on a generic mindfulness account, cut it.
+
+Structure that works:
+  Line 1 — extend or sharpen the quote with a second concrete observation.
+  Line 2 (optional) — one practical, body-level micro-action OR one more recognized moment. Never a moral.
+  Line 3 (closer) — soft pull toward CraftedDay.
+
+Good caption (concrete throughout):
+  Quote: "you came home an hour ago. your shoulders haven't."
+  → "the body doesn't always arrive when you do.
+     one honest exhale counts as coming back.
+     open CraftedDay and tell it what kind of day it was."
+
+Bad caption (drifts into wellness filler):
+  → "the body holds what the mind cannot release.
+     give yourself permission to soften.
+     your nervous system will thank you."
+
+Read your caption back before finalizing — every sentence must parse cleanly on first read. No broken syntax, no "the body X than the body does" tautologies, no half-finished metaphors.
+
+Closers — vary across posts, never repeat verbatim:
+  - "a fresh one's waiting in CraftedDay."
   - "CraftedDay makes you a new one every morning."
-  - "Open CraftedDay and tell it what kind of day it is."
-  - "Built for the day you're already in. CraftedDay."
-Vary the closer. Don't repeat the same phrasing across posts.
+  - "open CraftedDay and tell it what kind of day it is."
+  - "built for the day you're already in. CraftedDay."
+Never salesy, never "download now."
 
 VISUAL PROMPT: A calm cinematic background, vertical 9:16, photorealistic, shallow depth of field. Pick from one of these worlds and invent the specific image — don't lift the examples:
   • Nature (forests, water, light, weather, mountains, deserts, fields)
@@ -174,7 +213,7 @@ Composition: strong negative space in the center third so a quote can sit there.
 Return JSON only. No prose, no markdown fence.`;
 }
 
-async function generateConcept(opts: { theme: string; history: ReelHistory }): Promise<Post> {
+export async function generateConcept(opts: { theme: string; history: ReelHistory }): Promise<Post> {
   const res = await anthropic.messages.create({
     model: "claude-opus-4-7",
     max_tokens: 8000,

@@ -6,11 +6,13 @@ import 'clerk_service.dart';
 
 class GeneratedMeditation {
   final String id;
+  final String? title;
   final String audioUrl;
   final int duration;
 
   const GeneratedMeditation({
     required this.id,
+    this.title,
     required this.audioUrl,
     required this.duration,
   });
@@ -18,6 +20,7 @@ class GeneratedMeditation {
   factory GeneratedMeditation.fromDoneJob(Map<String, dynamic> json) {
     return GeneratedMeditation(
       id: json['id'] as String,
+      title: json['title'] as String?,
       audioUrl: json['audioUrl'] as String,
       duration: json['duration'] as int,
     );

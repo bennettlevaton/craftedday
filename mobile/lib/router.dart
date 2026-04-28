@@ -27,11 +27,13 @@ final appRouter = GoRouter(
         final duration =
             int.tryParse(state.uri.queryParameters['duration'] ?? '30') ?? 30;
         final replay = state.uri.queryParameters['replay'] == '1';
+        final title = state.uri.queryParameters['title'];
         return PlayerScreen(
           audioUrl: audioUrl,
           id: id,
           duration: duration,
           replay: replay,
+          title: title,
         );
       },
     ),

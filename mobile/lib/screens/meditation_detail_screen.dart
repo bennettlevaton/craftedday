@@ -53,6 +53,7 @@ class _MeditationDetailScreenState extends State<MeditationDetailScreen> {
       '/player?audioUrl=${Uri.encodeComponent(m.audioUrl)}'
       '&id=${m.id}'
       '&duration=${m.duration ?? 30}'
+      '${m.title != null ? '&title=${Uri.encodeComponent(m.title!)}' : ''}'
       '&replay=1',
     );
   }

@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
     const rows = await db
       .select({
         id: meditations.id,
+        title: meditations.title,
         prompt: meditations.prompt,
         audioUrl: meditations.audioUrl,
         duration: meditations.duration,

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/meditation.dart';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
 import '../theme/colors.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -115,6 +116,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (result == null) return;
     await _persist(() => apiService.updateProfile(notificationHour: result));
     if (mounted) setState(() => _me = _me?.copyWith(notificationHour: result));
+    // Reschedule the local notification — backend persistence alone leaves
+    // the previously queued notification firing at the old hour.
+    await NotificationService.instance.scheduleIfNeeded(hour: result);
   }
 
   Future<void> _persist(Future<void> Function() action) async {

@@ -127,25 +127,29 @@ PLAIN LANGUAGE ONLY. Words a 12-year-old uses every day. No fancy vocabulary. No
   invitation (as in "this is an invitation to..."), holding (as in "holding space").
 If a meditation-app marketing person from 2019 would say it, don't.
 
-Hits the right register — calibrate to the Yung Pueblo / Sarah Blondin level of meditation Instagram. Direct address. Names a specific thought-pattern or moment. Reframes it. Tone of someone who's done the work:
-  - "Throw away the idea that you need to pause your life until you're healed."
-  - "A real sign of progress is when you stop punishing yourself for being imperfect."
-  - "You don't have to think your way out of feeling something."
-  - "Forcing yourself to be happy isn't healing. Being honest about what you feel is."
-  - "You are not behind. You were resting."
-  - "If a thought keeps coming back, it wants to be felt — not solved."
-  - "Your peace doesn't depend on someone else changing."
-  - "Rest isn't something you have to earn."
-  - "Healing rarely looks like progress. Sometimes it looks like staying still."
-  - "Worry is not preparation."
+Hits the right register — name an observable behavior or body state the reader instantly recognizes as themselves. Not a belief, not a reframe, not wisdom. The "shit, this is me" line that gets screenshotted and DMed to a friend. Tone is warm and direct, never preachy:
+  - "you've been holding your shoulders up since 9am."
+  - "rereading the text three times before you send it isn't caring more — it's anxiety."
+  - "checking your email in bed is not rest."
+  - "the 3pm crash where you can't read another email isn't laziness."
+  - "you're scrolling because you don't want to feel what's underneath."
+  - "you haven't taken a real breath since you opened your laptop."
+  - "the pit in your stomach before a sunday night isn't dramatic. it's real."
+  - "watching one more episode is not the same as decompressing."
+  - "you've been clenching your jaw the whole meeting."
+  - "answering one more email is not winding down."
 
-Wrong — vague aphorism that sounds spiritual but says nothing specific:
+Wrong — universal aphorism / wisdom drop with no specific moment named (sounds profound, slides off):
+  - "Worry is not preparation."
+  - "Healing rarely looks like progress."
+  - "You are not behind. You were resting."
+  - "Rest isn't something you have to earn."
   - "Arrive before you organize."
   - "Endings deserve the same attention as beginning."
   - "Stillness becomes you."
-  - "The center holds."
-  - "Light finds shape."
   - "Begin where you are."
+
+Test: if the line could appear on a Yung Pueblo tile unchanged, it's wrong. The line should describe a body, a behavior, or a specific moment — something a reader can point at and say "that's literally me right now."
 
 No emojis. No "breathe and be happy" affirmation cliché. No "you are enough." Calibration only — invent something fresh.
 
@@ -318,24 +322,27 @@ async function renderReel(backgroundPath: string, quote: string, outPath: string
   // Insta accounts (thegracieglow et al.) the team is calibrating against.
   const lowercased = quote.toLowerCase();
   const { lines, fontsize } = layoutQuote(lowercased, maxTextWidth, 96, 64);
-  const lineGap = Math.round(fontsize * 0.08);
+  // Constant line-height — using ffmpeg's `text_h` made spacing uneven because
+  // descenders (g/p/y) make some lines taller than others. Fixed step = even rhythm.
+  const lineHeight = Math.round(fontsize * 1.18);
 
   const blockCenterY = `h*0.32`;
   const N = lines.length;
+  const totalHeight = N * lineHeight;
   const drawTexts = lines.map((line, i) => {
-    const offset = `${blockCenterY}-(${N}*text_h+${(N - 1) * lineGap})/2+${i}*(text_h+${lineGap})`;
+    const y = `${blockCenterY}-${totalHeight / 2}+${i * lineHeight}`;
     return [
       `drawtext=fontfile='${FONT_PATH}'`,
       `text='${escDrawtext(line)}'`,
       `fontcolor=#FAF6EF`,
       `fontsize=${fontsize}`,
       `x=(w-text_w)/2`,
-      `y=${offset}`,
+      `y=${y}`,
       `borderw=5`,
-      `bordercolor=black@0.55`,
-      `shadowcolor=black@0.40`,
-      `shadowx=0`,
-      `shadowy=2`,
+      `bordercolor=black`,
+      `shadowcolor=black@0.45`,
+      `shadowx=3`,
+      `shadowy=4`,
     ].join(":");
   });
 

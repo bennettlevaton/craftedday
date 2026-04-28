@@ -12,7 +12,8 @@
     "music:generate": "NODE_PATH=./node_modules tsx ../scripts/generate-music.ts",
     "cues:generate": "NODE_PATH=./node_modules tsx ../scripts/generate-breathing-cues.ts",
     "welcome:generate": "NODE_PATH=./node_modules tsx ../scripts/generate-welcome.ts",
-    "quotes:brainstorm": "NODE_PATH=./node_modules tsx ../scripts/brainstorm-quotes.ts"
+    "quotes:brainstorm": "NODE_PATH=./node_modules tsx ../scripts/brainstorm-quotes.ts",
+    "reel:preview": "NODE_PATH=./node_modules tsx ../scripts/preview-reel-text.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",

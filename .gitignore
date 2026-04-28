@@ -10,6 +10,9 @@ mobile/build
 mobile/.flutter-plugins
 mobile/.flutter-plugins-dependencies
 
+# Scripts
+scripts/tmp/
+
 # General
 .DS_Store
 *.env

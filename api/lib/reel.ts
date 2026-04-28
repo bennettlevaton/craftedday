@@ -20,7 +20,12 @@ import { pipeline } from "stream/promises";
 import { put } from "@vercel/blob";
 import { log } from "@/lib/log";
 
-const FONT_PATH = join(process.cwd(), "lib/fonts/Fraunces144pt-SemiBold.ttf");
+// Spectral Medium — humanist serif by Production Type. Lower stroke contrast
+// and calmer terminals than Fraunces 144pt SemiBold (which is a display cut
+// optimized for posters). Reads closer to the wellness/Calm grid aesthetic.
+// Cormorant Garamond would also fit but only ships as a variable font in
+// google/fonts and ffmpeg's drawtext can't cleanly select weight axes.
+const FONT_PATH = join(process.cwd(), "lib/fonts/Spectral-SemiBold.ttf");
 const TARGET_WIDTH = 1080;
 const TARGET_HEIGHT = 1920;
 
@@ -199,16 +204,26 @@ Closers — vary across posts, never repeat verbatim:
   - "built for the day you're already in. CraftedDay."
 Never salesy, never "download now."
 
-VISUAL PROMPT: A calm cinematic background, vertical 9:16, photorealistic, shallow depth of field. Pick from one of these worlds and invent the specific image — don't lift the examples:
-  • Nature (forests, water, light, weather, mountains, deserts, fields)
-  • Wood / natural materials (interiors with warm wood, stone, linen, ceramics, candles)
-  • Luxe spa / Aman / Four Seasons / Amangiri / Brando aesthetic (architecture-meets-nature; pools, baths, suites, terraces)
+VISUAL PROMPT: A calm cinematic background for a premium meditation brand. Vertical 9:16, photorealistic, shallow depth of field, loopable.
 
-Strict no-list: no people, no faces, no hands, no animals, no text, no logos, no clutter, no aerial drone shots, no sci-fi / fantasy. Sky/water/land must stay crisply separated — no muddy gradient washes.
+Aesthetic: quiet luxury wellness, editorial, soft spiritual. Restorative, emotionally safe, slow nervous system energy. Should feel like something the viewer wants to associate with publicly.
 
-Camera: locked-off or extremely slow drift. Cinematic, anamorphic, shot on film.
-Light: soft, warm, natural — golden hour, candlelight, or diffuse morning light.
-Composition: strong negative space in the center third so a quote can sit there.
+Scene — pick one world and invent the specific shot (don't lift examples):
+  • Nature in subtle motion: wind through wildflowers, sunlight on water, slow waterfall mist, ocean at sunrise, rain on leaves, floating pollen, forest light beams, mist drifting through trees, ripples on a still lake, meadow grass swaying
+  • Warm interiors: linen, warm wood, stone, ceramics, a single candle, morning light through gauze curtains
+  • Aman / Amangiri / Four Seasons / Brando aesthetic: pools, baths, terraces where architecture meets nature
+
+Camera: locked-off or extremely slow drift — gentle dolly or handheld micro-movement. Macro lens feel, dreamy focus. Cinematic, anamorphic, shot on film.
+
+Light: golden hour or soft overcast natural light. Warm highlights, gentle shadows.
+
+Color: muted greens, creams, soft gold, warm earth tones. Sky/water/land must stay crisply separated — no muddy gradient washes, no oversaturation.
+
+Motion: very subtle. Wind, breath, water, light shift — small enough that the eye relaxes. No fast cuts, no chaos, no whip pans.
+
+Composition: strong negative space in the center third so 2-3 lines of quote can sit there cleanly.
+
+Strict no-list: no people, no faces, no hands, no animals, no text, no logos, no clutter, no aerial drone shots, no sci-fi / fantasy, no AI-generated look.
 
 Return JSON only. No prose, no markdown fence.`;
 }
@@ -332,15 +347,17 @@ function wrapInto(quote: string, n: number): string[] {
 }
 
 // Bias toward the FEWEST lines that fit within the floor — gives a compact
-// 2–3 line block in the upper third (thegracieglow reference) instead of a
-// tall narrow column. Cap at 4 lines; very long quotes accept a sub-floor
-// font rather than spilling to 5+ lines. The 0.50 char-width factor is
-// calibrated for Fraunces SemiBold lowercase with a small safety buffer.
+// 2–3 line block in the upper third (luxe wellness grid reference) instead
+// of a tall narrow column. Cap at 4 lines; very long quotes accept a
+// sub-floor font rather than spilling to 5+ lines. The 0.52 char-width
+// factor is calibrated for Fraunces SemiBold lowercase with a safety buffer.
 function layoutQuote(quote: string, maxTextWidth: number, ceiling: number, floor: number) {
   const candidates = [2, 3, 4].map((n) => {
     const lines = wrapInto(quote, n);
     const longest = Math.max(...lines.map((l) => l.length));
-    const fit = Math.floor(maxTextWidth / (longest * 0.50));
+    // 0.48 calibrated for Spectral Medium lowercase (narrower than the old
+    // Fraunces SemiBold value of 0.52).
+    const fit = Math.floor(maxTextWidth / (longest * 0.48));
     return { lines, fit };
   });
   const viable = candidates.find((c) => c.fit >= floor);
@@ -352,24 +369,33 @@ function escDrawtext(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\u2019");
 }
 
-async function renderReel(backgroundPath: string, quote: string, outPath: string) {
-  // 120px each side ≈ 11% — leaves headroom against IG's center-crop preview
-  // (the in-feed thumbnail clips slightly tighter than the full reel frame).
-  const SIDE_MARGIN = 120;
+export async function renderReel(backgroundPath: string, quote: string, outPath: string) {
+  // 140px each side ≈ 13% — more breathing room, matches the luxe wellness
+  // grid reference where text sits well inside the frame, never edge-to-edge.
+  const SIDE_MARGIN = 140;
   const maxTextWidth = TARGET_WIDTH - SIDE_MARGIN * 2;
-  // All-lowercase, no caps anywhere — calmer, less shouty, matches reference
-  // Insta accounts (thegracieglow et al.) the team is calibrating against.
+  // All-lowercase, no caps anywhere — calmer, less shouty, matches the
+  // reference grid (lowercase serif, top-anchored, generous whitespace).
   const lowercased = quote.toLowerCase();
-  const { lines, fontsize } = layoutQuote(lowercased, maxTextWidth, 96, 64);
+  // Restrained vs. the original 64–96 range, but bumped back up from the
+  // first pass which under-shot. Floor 56 keeps even the longest quotes
+  // readable without dropping to 5+ lines.
+  const { lines, fontsize } = layoutQuote(lowercased, maxTextWidth, 88, 56);
   // Constant line-height — using ffmpeg's `text_h` made spacing uneven because
-  // descenders (g/p/y) make some lines taller than others. Fixed step = even rhythm.
-  const lineHeight = Math.round(fontsize * 1.18);
+  // descenders (g/p/y) make some lines taller than others. Fixed step = even
+  // rhythm. 1.10 (was 1.18) gives a tighter, more poetic block.
+  const lineHeight = Math.round(fontsize * 1.10);
 
-  const blockCenterY = `h*0.32`;
+  // Anchored higher (was 0.32) — reference grid sits text in the upper
+  // quarter, like "Bloomscroll Break!" / "Your Birth Month → Your Soundscape".
+  const blockCenterY = `h*0.24`;
   const N = lines.length;
   const totalHeight = N * lineHeight;
   const drawTexts = lines.map((line, i) => {
     const y = `${blockCenterY}-${totalHeight / 2}+${i * lineHeight}`;
+    // Near-zero stroke + soft drop shadow — the heavy 5px black border was
+    // the main thing reading clunky. 1px is just enough to keep edges crisp
+    // against bright frames; the soft offset shadow handles legibility.
     return [
       `drawtext=fontfile='${FONT_PATH}'`,
       `text='${escDrawtext(line)}'`,
@@ -377,11 +403,11 @@ async function renderReel(backgroundPath: string, quote: string, outPath: string
       `fontsize=${fontsize}`,
       `x=(w-text_w)/2`,
       `y=${y}`,
-      `borderw=5`,
-      `bordercolor=black`,
-      `shadowcolor=black@0.45`,
-      `shadowx=3`,
-      `shadowy=4`,
+      `borderw=1`,
+      `bordercolor=black@0.55`,
+      `shadowcolor=black@0.40`,
+      `shadowx=0`,
+      `shadowy=3`,
     ].join(":");
   });
 

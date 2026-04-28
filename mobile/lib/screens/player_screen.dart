@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import '../services/api_service.dart';
 import '../services/music_service.dart';
 import '../services/notification_service.dart';
@@ -84,7 +85,21 @@ class _PlayerScreenState extends State<PlayerScreen>
       });
     }
     try {
-      await _player.setUrl(widget.audioUrl);
+      // The MediaItem tag is what hooks this player into iOS Now Playing /
+      // Android media notification — without it, lock-screen controls don't
+      // appear. Only the voice player carries a tag; the music player stays
+      // tagless so the system surfaces a single set of controls.
+      await _player.setAudioSource(
+        AudioSource.uri(
+          Uri.parse(widget.audioUrl),
+          tag: MediaItem(
+            id: widget.id,
+            album: 'CraftedDay',
+            title: 'Meditation',
+            artist: 'CraftedDay',
+          ),
+        ),
+      );
       await _player.setVolume(1.0);
       if (!MusicService.instance.isPlaying) {
         MusicService.instance.start();

@@ -3,6 +3,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'router.dart';
 import 'services/clerk_service.dart';
@@ -12,6 +13,14 @@ import 'theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
+
+  // Wires the tagged voice AudioPlayer to iOS Now Playing / Android media
+  // notification. Must run before any AudioPlayer is instantiated.
+  await JustAudioBackground.init(
+    androidNotificationChannelId: 'com.craftedday.craftedday.audio',
+    androidNotificationChannelName: 'Meditation playback',
+    androidNotificationOngoing: true,
+  );
 
   const rcKey = String.fromEnvironment('REVENUECAT_API_KEY');
   final revenueCatKey = rcKey.isNotEmpty

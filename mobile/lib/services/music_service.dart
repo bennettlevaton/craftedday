@@ -25,7 +25,7 @@ class MusicService {
 
       await _player!.setUrl(url);
       await _player!.setLoopMode(LoopMode.one);
-      await _player!.setVolume(0.15);
+      await _player!.setVolume(0.22);
       await _player!.play();
     } catch (_) {
       // Non-fatal — session continues without music

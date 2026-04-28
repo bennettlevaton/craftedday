@@ -10,11 +10,16 @@ import '../services/notification_service.dart';
 import '../services/support_service.dart';
 import '../theme/colors.dart';
 
+// Public app-icon URL used as Now Playing artwork on iOS lock screen / Control
+// Center. Hosted on the prod landing page so it's reachable from any build.
+const _nowPlayingArtUrl = 'https://craftedday.com/icon-1024.png';
+
 class PlayerScreen extends StatefulWidget {
   final String audioUrl;
   final String id;
   final int duration;
   final bool replay;
+  final String? title;
 
   const PlayerScreen({
     super.key,
@@ -22,6 +27,7 @@ class PlayerScreen extends StatefulWidget {
     required this.id,
     required this.duration,
     this.replay = false,
+    this.title,
   });
 
   @override
@@ -88,13 +94,17 @@ class _PlayerScreenState extends State<PlayerScreen>
       // Tagging the AudioSource with a MediaItem is what causes
       // just_audio_background to publish Now Playing info + register remote
       // command handlers, so iOS shows lock-screen / Control Center controls.
+      final title = widget.title?.trim().isNotEmpty == true
+          ? widget.title!.trim()
+          : 'Meditation';
       await _player.setAudioSource(
         AudioSource.uri(
           Uri.parse(widget.audioUrl),
           tag: MediaItem(
             id: widget.id,
-            title: 'Meditation',
+            title: title,
             artist: 'CraftedDay',
+            artUri: Uri.parse(_nowPlayingArtUrl),
           ),
         ),
       );

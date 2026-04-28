@@ -368,6 +368,7 @@ class _SessionCard extends StatelessWidget {
       '/player?audioUrl=${Uri.encodeComponent(session.audioUrl)}'
       '&id=${session.id}'
       '&duration=${session.duration ?? 30}'
+      '${session.title != null ? '&title=${Uri.encodeComponent(session.title!)}' : ''}'
       '&replay=1',
     );
   }

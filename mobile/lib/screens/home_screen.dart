@@ -118,10 +118,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (s == null) return;
     // If already checked in, treat as replay (no post-session prompt)
     final alreadyCheckedIn = s['feeling'] != null;
+    final title = s['title'] as String?;
     context.push(
       '/player?audioUrl=${Uri.encodeComponent(s['audioUrl'] as String)}'
       '&id=${s['id']}'
       '&duration=${s['duration'] ?? 600}'
+      '${title != null ? '&title=${Uri.encodeComponent(title)}' : ''}'
       '${alreadyCheckedIn ? '&replay=1' : ''}',
     );
   }
@@ -195,7 +197,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context.push(
         '/player?audioUrl=${Uri.encodeComponent(result.audioUrl)}'
         '&id=${result.id}'
-        '&duration=${result.duration}',
+        '&duration=${result.duration}'
+        '${result.title != null ? '&title=${Uri.encodeComponent(result.title!)}' : ''}',
       );
     } on QuotaExceededException catch (e) {
       MusicService.instance.stop();

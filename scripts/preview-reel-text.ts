@@ -35,18 +35,19 @@ const QUOTES = [
   "you carried too much today. put some of it here.",
 ];
 
-// Synthesizes a 9:16 warm-earth solid via ffmpeg's lavfi color source. Good
-// enough to judge text legibility, contrast, stroke, and layout. Drop a real
-// Kling clip at scripts/tmp/background.mp4 anytime to override.
+// Synthesizes a 9:16 light-sky-blue solid via ffmpeg's lavfi color source.
+// Deliberately a hard legibility case (pale background vs. white text) so
+// the overlay's stroke + shadow are stress-tested. Drop a real Kling clip
+// at scripts/tmp/background.mp4 anytime to override.
 async function ensureBackground() {
   if (existsSync(BG_PATH)) return;
   await mkdir(dirname(BG_PATH), { recursive: true });
-  console.log(`No background at ${BG_PATH} — generating warm placeholder...`);
+  console.log(`No background at ${BG_PATH} — generating sky-blue placeholder...`);
   await new Promise<void>((res, rej) => {
     const p = spawn(ffmpegInstaller.path, [
       "-y",
       "-f", "lavfi",
-      "-i", "color=c=0x6b5942:s=1080x1920:r=30:d=7",
+      "-i", "color=c=0xb6cfdc:s=1080x1920:r=30:d=7",
       "-c:v", "libx264",
       "-pix_fmt", "yuv420p",
       "-t", "7",

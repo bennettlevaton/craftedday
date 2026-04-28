@@ -393,9 +393,8 @@ export async function renderReel(backgroundPath: string, quote: string, outPath:
   const totalHeight = N * lineHeight;
   const drawTexts = lines.map((line, i) => {
     const y = `${blockCenterY}-${totalHeight / 2}+${i * lineHeight}`;
-    // Near-zero stroke + soft drop shadow — the heavy 5px black border was
-    // the main thing reading clunky. 1px is just enough to keep edges crisp
-    // against bright frames; the soft offset shadow handles legibility.
+    // No stroke/border. Clean serif on its own. Soft drop shadow only —
+    // just enough to anchor the type to the frame without ringing it.
     return [
       `drawtext=fontfile='${FONT_PATH}'`,
       `text='${escDrawtext(line)}'`,
@@ -403,9 +402,7 @@ export async function renderReel(backgroundPath: string, quote: string, outPath:
       `fontsize=${fontsize}`,
       `x=(w-text_w)/2`,
       `y=${y}`,
-      `borderw=1`,
-      `bordercolor=black@0.55`,
-      `shadowcolor=black@0.40`,
+      `shadowcolor=black@0.45`,
       `shadowx=0`,
       `shadowy=3`,
     ].join(":");

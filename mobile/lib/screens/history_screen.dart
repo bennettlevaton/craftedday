@@ -14,23 +14,66 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
-  late Future<List<Meditation>> _historyFuture;
-  late Future<List<Meditation>> _favoritesFuture;
+  List<Meditation>? _history;
+  List<Meditation>? _favorites;
+  Set<String> _favoriteIds = {};
+  Object? _loadError;
   UserStats? _stats;
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
-    _historyFuture = apiService.getHistory();
-    _favoritesFuture = apiService.getFavorites();
+    _loadAll();
     _loadStats();
-    // Refresh favorites list when switching to that tab
-    _tabs.addListener(() {
-      if (_tabs.index == 1 && !_tabs.indexIsChanging) {
-        setState(() { _favoritesFuture = apiService.getFavorites(); });
-      }
-    });
+  }
+
+  Future<void> _loadAll({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _history = null;
+        _favorites = null;
+        _loadError = null;
+      });
+    }
+    try {
+      final results = await Future.wait([
+        apiService.getHistory(),
+        apiService.getFavorites(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _history = results[0];
+        _favorites = results[1];
+        _favoriteIds = results[1].map((m) => m.id).toSet();
+        _loadError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      if (silent) return;
+      setState(() => _loadError = e);
+    }
+  }
+
+  Future<void> _refreshHistory() async {
+    try {
+      final list = await apiService.getHistory();
+      if (!mounted) return;
+      setState(() => _history = list);
+    } catch (_) {
+      // Pull-to-refresh failures swallow silently — list still shows what we have.
+    }
+  }
+
+  Future<void> _refreshFavorites() async {
+    try {
+      final list = await apiService.getFavorites();
+      if (!mounted) return;
+      setState(() {
+        _favorites = list;
+        _favoriteIds = list.map((m) => m.id).toSet();
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadStats() async {
@@ -39,6 +82,49 @@ class _HistoryScreenState extends State<HistoryScreen>
       if (mounted) setState(() => _stats = stats);
     } catch (_) {
       // Nudge just won't show.
+    }
+  }
+
+  Future<void> _toggleFavorite(Meditation session) async {
+    final wasFavorite = _favoriteIds.contains(session.id);
+    final newValue = !wasFavorite;
+    setState(() {
+      if (newValue) {
+        _favoriteIds.add(session.id);
+        if (_favorites != null && !_favorites!.any((m) => m.id == session.id)) {
+          _favorites = [session, ..._favorites!];
+        }
+      } else {
+        _favoriteIds.remove(session.id);
+        _favorites = _favorites?.where((m) => m.id != session.id).toList();
+      }
+    });
+    try {
+      final confirmed = await apiService.toggleFavorite(session.id);
+      if (!mounted) return;
+      if (confirmed != newValue) {
+        setState(() {
+          if (confirmed) {
+            _favoriteIds.add(session.id);
+          } else {
+            _favoriteIds.remove(session.id);
+            _favorites = _favorites?.where((m) => m.id != session.id).toList();
+          }
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        if (wasFavorite) {
+          _favoriteIds.add(session.id);
+          if (_favorites != null && !_favorites!.any((m) => m.id == session.id)) {
+            _favorites = [session, ..._favorites!];
+          }
+        } else {
+          _favoriteIds.remove(session.id);
+          _favorites = _favorites?.where((m) => m.id != session.id).toList();
+        }
+      });
     }
   }
 
@@ -76,15 +162,23 @@ class _HistoryScreenState extends State<HistoryScreen>
         controller: _tabs,
         children: [
           _SessionList(
-            future: _historyFuture,
+            sessions: _history,
+            error: _loadError,
+            favoriteIds: _favoriteIds,
             emptyText: 'Your practice will appear here',
             nudge: _nudgeCopy(_stats),
-            onRefresh: () { setState(() { _historyFuture = apiService.getHistory(); }); },
+            onRefresh: _refreshHistory,
+            onToggleFavorite: _toggleFavorite,
+            onPopFromDetail: () => _loadAll(silent: true),
           ),
           _SessionList(
-            future: _favoritesFuture,
+            sessions: _favorites,
+            error: _loadError,
+            favoriteIds: _favoriteIds,
             emptyText: 'Favorite sessions to revisit them here',
-            onRefresh: () { setState(() { _favoritesFuture = apiService.getFavorites(); }); },
+            onRefresh: _refreshFavorites,
+            onToggleFavorite: _toggleFavorite,
+            onPopFromDetail: () => _loadAll(silent: true),
           ),
         ],
       ),
@@ -93,53 +187,79 @@ class _HistoryScreenState extends State<HistoryScreen>
 }
 
 class _SessionList extends StatelessWidget {
-  final Future<List<Meditation>> future;
+  final List<Meditation>? sessions;
+  final Object? error;
+  final Set<String> favoriteIds;
   final String emptyText;
   final String? nudge;
-  final VoidCallback onRefresh;
+  final Future<void> Function() onRefresh;
+  final Future<void> Function(Meditation) onToggleFavorite;
+  final VoidCallback onPopFromDetail;
 
   const _SessionList({
-    required this.future,
+    required this.sessions,
+    required this.error,
+    required this.favoriteIds,
     required this.emptyText,
     required this.onRefresh,
+    required this.onToggleFavorite,
+    required this.onPopFromDetail,
     this.nudge,
   });
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<Meditation>>(
-      future: future,
-      builder: (_, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(
-              color: AppColors.accent,
-              strokeWidth: 2,
-            ),
-          );
-        }
-        if (snap.hasError) {
-          return _EmptyState(icon: Icons.error_outline, text: "We couldn't load your sessions. Try again in a moment.");
-        }
-        final sessions = snap.data ?? [];
-        if (sessions.isEmpty) {
-          return _EmptyState(icon: Icons.air, text: emptyText);
-        }
-        final showNudge = nudge != null;
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(28, 20, 28, 20),
-          itemCount: sessions.length + (showNudge ? 1 : 0),
-          separatorBuilder: (_, _) => const SizedBox(height: 12),
-          itemBuilder: (_, i) {
-            if (showNudge && i == 0) return _NudgeCard(text: nudge!);
-            final idx = showNudge ? i - 1 : i;
-            return _SessionCard(
-              session: sessions[idx],
-              onRefresh: onRefresh,
-            );
-          },
+    if (sessions == null) {
+      if (error != null) {
+        return _EmptyState(
+          icon: Icons.error_outline,
+          text: "We couldn't load your sessions. Try again in a moment.",
         );
-      },
+      }
+      return const Center(
+        child: CircularProgressIndicator(
+          color: AppColors.accent,
+          strokeWidth: 2,
+        ),
+      );
+    }
+    if (sessions!.isEmpty) {
+      return RefreshIndicator(
+        color: AppColors.accent,
+        onRefresh: onRefresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: MediaQuery.of(context).size.height * 0.6,
+              child: _EmptyState(icon: Icons.air, text: emptyText),
+            ),
+          ],
+        ),
+      );
+    }
+    final showNudge = nudge != null;
+    return RefreshIndicator(
+      color: AppColors.accent,
+      onRefresh: onRefresh,
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(28, 20, 28, 20),
+        itemCount: sessions!.length + (showNudge ? 1 : 0),
+        separatorBuilder: (_, _) => const SizedBox(height: 12),
+        itemBuilder: (_, i) {
+          if (showNudge && i == 0) return _NudgeCard(text: nudge!);
+          final idx = showNudge ? i - 1 : i;
+          final session = sessions![idx];
+          return _SessionCard(
+            key: ValueKey(session.id),
+            session: session,
+            isFavorite: favoriteIds.contains(session.id),
+            onToggleFavorite: () => onToggleFavorite(session),
+            onPopFromDetail: onPopFromDetail,
+          );
+        },
+      ),
     );
   }
 }
@@ -224,46 +344,30 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _SessionCard extends StatefulWidget {
+class _SessionCard extends StatelessWidget {
   final Meditation session;
-  final VoidCallback onRefresh;
+  final bool isFavorite;
+  final VoidCallback onToggleFavorite;
+  final VoidCallback onPopFromDetail;
 
-  const _SessionCard({required this.session, required this.onRefresh});
+  const _SessionCard({
+    super.key,
+    required this.session,
+    required this.isFavorite,
+    required this.onToggleFavorite,
+    required this.onPopFromDetail,
+  });
 
-  @override
-  State<_SessionCard> createState() => _SessionCardState();
-}
-
-class _SessionCardState extends State<_SessionCard> {
-  late bool _isFavorite;
-
-  @override
-  void initState() {
-    super.initState();
-    _isFavorite = widget.session.isFavorite;
+  Future<void> _openDetail(BuildContext context) async {
+    await context.push('/meditation?id=${session.id}');
+    onPopFromDetail();
   }
 
-  Future<void> _toggleFavorite() async {
-    final newValue = !_isFavorite;
-    setState(() => _isFavorite = newValue);
-    try {
-      final confirmed = await apiService.toggleFavorite(widget.session.id);
-      if (mounted) setState(() => _isFavorite = confirmed);
-    } catch (_) {
-      if (mounted) setState(() => _isFavorite = !newValue);
-    }
-  }
-
-  Future<void> _openDetail() async {
-    await context.push('/meditation?id=${widget.session.id}');
-    widget.onRefresh();
-  }
-
-  void _play() {
+  void _play(BuildContext context) {
     context.push(
-      '/player?audioUrl=${Uri.encodeComponent(widget.session.audioUrl)}'
-      '&id=${widget.session.id}'
-      '&duration=${widget.session.duration ?? 30}'
+      '/player?audioUrl=${Uri.encodeComponent(session.audioUrl)}'
+      '&id=${session.id}'
+      '&duration=${session.duration ?? 30}'
       '&replay=1',
     );
   }
@@ -271,10 +375,10 @@ class _SessionCardState extends State<_SessionCard> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final s = widget.session;
+    final s = session;
 
     return GestureDetector(
-      onTap: _openDetail,
+      onTap: () => _openDetail(context),
       child: Container(
         padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
         decoration: BoxDecoration(
@@ -317,16 +421,16 @@ class _SessionCardState extends State<_SessionCard> {
             ),
             IconButton(
               icon: Icon(
-                _isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                 size: 22,
-                color: _isFavorite ? AppColors.accent : AppColors.textSecondary,
+                color: isFavorite ? AppColors.accent : AppColors.textSecondary,
               ),
-              onPressed: _toggleFavorite,
+              onPressed: onToggleFavorite,
             ),
             IconButton(
               icon: const Icon(Icons.play_arrow_rounded, size: 26),
               color: AppColors.textSecondary,
-              onPressed: _play,
+              onPressed: () => _play(context),
             ),
           ],
         ),

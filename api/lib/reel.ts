@@ -20,7 +20,7 @@ import { pipeline } from "stream/promises";
 import { put } from "@vercel/blob";
 import { log } from "@/lib/log";
 
-const FONT_PATH = join(process.cwd(), "lib/fonts/Fraunces144pt-Bold.ttf");
+const FONT_PATH = join(process.cwd(), "lib/fonts/Fraunces144pt-SemiBold.ttf");
 const TARGET_WIDTH = 1080;
 const TARGET_HEIGHT = 1920;
 
@@ -281,16 +281,16 @@ function wrapInto(quote: string, n: number): string[] {
 }
 
 // Pick the line wrap that yields the largest font without overflowing
-// `maxTextWidth`. The 0.58 char-width factor is a conservative estimate for
-// Fraunces Bold and includes a small safety buffer. Prefer candidates whose
-// natural fit clears `floor`; if none do (very long quote), fall back to the
-// candidate with the largest fit and accept a sub-floor font rather than
-// overflow the frame.
+// `maxTextWidth`. The 0.50 char-width factor is calibrated for Fraunces
+// SemiBold lowercase and includes a small safety buffer. Prefer candidates
+// whose natural fit clears `floor`; if none do (very long quote), fall back
+// to the candidate with the largest fit and accept a sub-floor font rather
+// than overflow the frame.
 function layoutQuote(quote: string, maxTextWidth: number, ceiling: number, floor: number) {
   const candidates = [1, 2, 3, 4, 5, 6].map((n) => {
     const lines = wrapInto(quote, n);
     const longest = Math.max(...lines.map((l) => l.length));
-    const fit = Math.floor(maxTextWidth / (longest * 0.58));
+    const fit = Math.floor(maxTextWidth / (longest * 0.50));
     return { lines, fit };
   });
   const viable = candidates.filter((c) => c.fit >= floor);
@@ -309,10 +309,13 @@ async function renderReel(backgroundPath: string, quote: string, outPath: string
   // (the in-feed thumbnail clips slightly tighter than the full reel frame).
   const SIDE_MARGIN = 120;
   const maxTextWidth = TARGET_WIDTH - SIDE_MARGIN * 2;
-  const { lines, fontsize } = layoutQuote(quote, maxTextWidth, 200, 96);
-  const lineGap = Math.round(fontsize * 0.18);
+  // All-lowercase, no caps anywhere — calmer, less shouty, matches reference
+  // Insta accounts (thegracieglow et al.) the team is calibrating against.
+  const lowercased = quote.toLowerCase();
+  const { lines, fontsize } = layoutQuote(lowercased, maxTextWidth, 130, 60);
+  const lineGap = Math.round(fontsize * 0.16);
 
-  const blockCenterY = `h*0.36`;
+  const blockCenterY = `h*0.42`;
   const N = lines.length;
   const drawTexts = lines.map((line, i) => {
     const offset = `${blockCenterY}-(${N}*text_h+${(N - 1) * lineGap})/2+${i}*(text_h+${lineGap})`;
@@ -323,11 +326,11 @@ async function renderReel(backgroundPath: string, quote: string, outPath: string
       `fontsize=${fontsize}`,
       `x=(w-text_w)/2`,
       `y=${offset}`,
-      `borderw=4`,
-      `bordercolor=black@0.65`,
-      `shadowcolor=black@0.55`,
+      `borderw=2`,
+      `bordercolor=black@0.40`,
+      `shadowcolor=black@0.45`,
       `shadowx=0`,
-      `shadowy=4`,
+      `shadowy=3`,
     ].join(":");
   });
 

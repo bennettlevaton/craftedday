@@ -269,35 +269,40 @@ async function downloadFile(url: string, outPath: string) {
 
 // ---------- Render ----------
 
+// Distribute extras to the first lines so the bottom line never trails as a
+// 1-2 word stub. `Math.ceil(words/n)` dumps remainder into the last line and
+// produces an upside-down-pyramid block (e.g. `[4, 4, 2]` for 10 words at
+// n=3). Balanced: `[4, 3, 3]`.
 function wrapInto(quote: string, n: number): string[] {
   const words = quote.trim().split(/\s+/);
   if (n <= 1 || words.length <= n) return [quote];
-  const per = Math.ceil(words.length / n);
+  const base = Math.floor(words.length / n);
+  const extra = words.length % n;
   const lines: string[] = [];
-  for (let i = 0; i < words.length; i += per) {
-    lines.push(words.slice(i, i + per).join(" "));
+  let idx = 0;
+  for (let i = 0; i < n; i++) {
+    const take = base + (i < extra ? 1 : 0);
+    lines.push(words.slice(idx, idx + take).join(" "));
+    idx += take;
   }
   return lines;
 }
 
-// Pick the line wrap that yields the largest font without overflowing
-// `maxTextWidth`. The 0.50 char-width factor is calibrated for Fraunces
-// SemiBold lowercase and includes a small safety buffer. Prefer candidates
-// whose natural fit clears `floor`; if none do (very long quote), fall back
-// to the candidate with the largest fit and accept a sub-floor font rather
-// than overflow the frame.
+// Bias toward the FEWEST lines that fit within the floor — gives a compact
+// 2–3 line block in the upper third (thegracieglow reference) instead of a
+// tall narrow column. Cap at 4 lines; very long quotes accept a sub-floor
+// font rather than spilling to 5+ lines. The 0.50 char-width factor is
+// calibrated for Fraunces SemiBold lowercase with a small safety buffer.
 function layoutQuote(quote: string, maxTextWidth: number, ceiling: number, floor: number) {
-  const candidates = [1, 2, 3, 4, 5, 6].map((n) => {
+  const candidates = [2, 3, 4].map((n) => {
     const lines = wrapInto(quote, n);
     const longest = Math.max(...lines.map((l) => l.length));
     const fit = Math.floor(maxTextWidth / (longest * 0.50));
     return { lines, fit };
   });
-  const viable = candidates.filter((c) => c.fit >= floor);
-  const pool = viable.length ? viable : candidates;
-  pool.sort((a, b) => b.fit - a.fit);
-  const best = pool[0];
-  return { lines: best.lines, fontsize: Math.min(ceiling, best.fit) };
+  const viable = candidates.find((c) => c.fit >= floor);
+  const choice = viable ?? candidates[candidates.length - 1];
+  return { lines: choice.lines, fontsize: Math.min(ceiling, choice.fit) };
 }
 
 function escDrawtext(s: string): string {
@@ -312,10 +317,10 @@ async function renderReel(backgroundPath: string, quote: string, outPath: string
   // All-lowercase, no caps anywhere — calmer, less shouty, matches reference
   // Insta accounts (thegracieglow et al.) the team is calibrating against.
   const lowercased = quote.toLowerCase();
-  const { lines, fontsize } = layoutQuote(lowercased, maxTextWidth, 130, 60);
-  const lineGap = Math.round(fontsize * 0.16);
+  const { lines, fontsize } = layoutQuote(lowercased, maxTextWidth, 96, 64);
+  const lineGap = Math.round(fontsize * 0.08);
 
-  const blockCenterY = `h*0.42`;
+  const blockCenterY = `h*0.32`;
   const N = lines.length;
   const drawTexts = lines.map((line, i) => {
     const offset = `${blockCenterY}-(${N}*text_h+${(N - 1) * lineGap})/2+${i}*(text_h+${lineGap})`;
@@ -326,11 +331,11 @@ async function renderReel(backgroundPath: string, quote: string, outPath: string
       `fontsize=${fontsize}`,
       `x=(w-text_w)/2`,
       `y=${offset}`,
-      `borderw=2`,
-      `bordercolor=black@0.40`,
-      `shadowcolor=black@0.45`,
+      `borderw=5`,
+      `bordercolor=black@0.55`,
+      `shadowcolor=black@0.40`,
       `shadowx=0`,
-      `shadowy=3`,
+      `shadowy=2`,
     ].join(":");
   });
 

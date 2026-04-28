@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'api_service.dart';
 
@@ -15,7 +16,10 @@ class MusicService {
     if (isPlaying) return;
     try {
       final url = await apiService.getRandomMusic();
-      if (url == null) return;
+      if (url == null) {
+        debugPrint('MusicService: /api/music/random returned no URL');
+        return;
+      }
       if (_currentUrl == url && isPlaying) return;
 
       await _player?.stop();
@@ -27,8 +31,8 @@ class MusicService {
       await _player!.setLoopMode(LoopMode.one);
       await _player!.setVolume(0.20);
       await _player!.play();
-    } catch (_) {
-      // Non-fatal — session continues without music
+    } catch (e) {
+      debugPrint('MusicService.start failed: $e');
     }
   }
 

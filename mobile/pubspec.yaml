@@ -59,6 +59,7 @@ dependencies:
   flutter_timezone: ^4.1.0
   url_launcher: ^6.3.0
   uuid: ^4.0.0
+  wakelock_plus: ^1.2.0
 
 flutter_launcher_icons:
   android: false

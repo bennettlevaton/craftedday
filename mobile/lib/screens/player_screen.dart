@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import '../services/api_service.dart';
 import '../services/music_service.dart';
 import '../services/notification_service.dart';
@@ -84,7 +85,19 @@ class _PlayerScreenState extends State<PlayerScreen>
       });
     }
     try {
-      await _player.setUrl(widget.audioUrl);
+      // Tagging the AudioSource with a MediaItem is what causes
+      // just_audio_background to publish Now Playing info + register remote
+      // command handlers, so iOS shows lock-screen / Control Center controls.
+      await _player.setAudioSource(
+        AudioSource.uri(
+          Uri.parse(widget.audioUrl),
+          tag: MediaItem(
+            id: widget.id,
+            title: 'Meditation',
+            artist: 'CraftedDay',
+          ),
+        ),
+      );
       await _player.setVolume(1.0);
       if (!MusicService.instance.isPlaying) {
         MusicService.instance.start();

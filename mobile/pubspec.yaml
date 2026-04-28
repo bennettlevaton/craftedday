@@ -43,6 +43,7 @@ dependencies:
       path: packages/clerk_flutter
   dio: ^5.0.0
   just_audio: ^0.9.0
+  just_audio_background: ^0.0.1-beta.13
   flutter_riverpod: ^2.0.0
   shared_preferences: ^2.0.0
   flutter_dotenv: ^5.0.0

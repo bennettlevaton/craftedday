@@ -14,23 +14,67 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
-  late Future<List<Meditation>> _historyFuture;
-  late Future<List<Meditation>> _favoritesFuture;
+  bool _loading = true;
+  bool _loadFailed = false;
+  List<Meditation> _history = [];
+  List<Meditation> _favorites = [];
+  final Set<String> _favoriteIds = {};
   UserStats? _stats;
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
-    _historyFuture = apiService.getHistory();
-    _favoritesFuture = apiService.getFavorites();
+    _loadAll();
     _loadStats();
-    // Refresh favorites list when switching to that tab
-    _tabs.addListener(() {
-      if (_tabs.index == 1 && !_tabs.indexIsChanging) {
-        setState(() { _favoritesFuture = apiService.getFavorites(); });
-      }
-    });
+  }
+
+  Future<void> _loadAll() async {
+    try {
+      final results = await Future.wait([
+        apiService.getHistory(),
+        apiService.getFavorites(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _history = results[0];
+        _favorites = results[1];
+        _favoriteIds
+          ..clear()
+          ..addAll(_favorites.map((m) => m.id))
+          ..addAll(_history.where((m) => m.isFavorite).map((m) => m.id));
+        _loading = false;
+        _loadFailed = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadFailed = true;
+      });
+    }
+  }
+
+  // Background refresh after returning from detail — keep current data on
+  // screen so the lists don't flash a spinner.
+  Future<void> _silentRefresh() async {
+    try {
+      final results = await Future.wait([
+        apiService.getHistory(),
+        apiService.getFavorites(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _history = results[0];
+        _favorites = results[1];
+        _favoriteIds
+          ..clear()
+          ..addAll(_favorites.map((m) => m.id))
+          ..addAll(_history.where((m) => m.isFavorite).map((m) => m.id));
+      });
+    } catch (_) {
+      // Last-known data stays on screen.
+    }
   }
 
   Future<void> _loadStats() async {
@@ -39,6 +83,35 @@ class _HistoryScreenState extends State<HistoryScreen>
       if (mounted) setState(() => _stats = stats);
     } catch (_) {
       // Nudge just won't show.
+    }
+  }
+
+  Future<void> _toggleFavorite(Meditation m) async {
+    final wasFav = _favoriteIds.contains(m.id);
+    setState(() => _applyFavorite(m, !wasFav));
+    try {
+      final confirmed = await apiService.toggleFavorite(m.id);
+      if (!mounted) return;
+      if (confirmed != !wasFav) {
+        setState(() => _applyFavorite(m, confirmed));
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _applyFavorite(m, wasFav));
+    }
+  }
+
+  void _applyFavorite(Meditation m, bool isFav) {
+    if (isFav) {
+      _favoriteIds.add(m.id);
+      if (!_favorites.any((x) => x.id == m.id)) {
+        final list = [..._favorites, m]
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        _favorites = list;
+      }
+    } else {
+      _favoriteIds.remove(m.id);
+      _favorites = _favorites.where((x) => x.id != m.id).toList();
     }
   }
 
@@ -72,72 +145,85 @@ class _HistoryScreenState extends State<HistoryScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabs,
-        children: [
-          _SessionList(
-            future: _historyFuture,
-            emptyText: 'Your practice will appear here',
-            nudge: _nudgeCopy(_stats),
-            onRefresh: () { setState(() { _historyFuture = apiService.getHistory(); }); },
-          ),
-          _SessionList(
-            future: _favoritesFuture,
-            emptyText: 'Favorite sessions to revisit them here',
-            onRefresh: () { setState(() { _favoritesFuture = apiService.getFavorites(); }); },
-          ),
-        ],
-      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(
+          color: AppColors.accent,
+          strokeWidth: 2,
+        ),
+      );
+    }
+    if (_loadFailed) {
+      return const _EmptyState(
+        icon: Icons.error_outline,
+        text: "We couldn't load your sessions. Try again in a moment.",
+      );
+    }
+    return TabBarView(
+      controller: _tabs,
+      children: [
+        _SessionList(
+          sessions: _history,
+          emptyText: 'Your practice will appear here',
+          nudge: _nudgeCopy(_stats),
+          favoriteIds: _favoriteIds,
+          onToggleFavorite: _toggleFavorite,
+          onDetailReturned: _silentRefresh,
+        ),
+        _SessionList(
+          sessions: _favorites,
+          emptyText: 'Favorite sessions to revisit them here',
+          favoriteIds: _favoriteIds,
+          onToggleFavorite: _toggleFavorite,
+          onDetailReturned: _silentRefresh,
+        ),
+      ],
     );
   }
 }
 
 class _SessionList extends StatelessWidget {
-  final Future<List<Meditation>> future;
+  final List<Meditation> sessions;
   final String emptyText;
   final String? nudge;
-  final VoidCallback onRefresh;
+  final Set<String> favoriteIds;
+  final Future<void> Function(Meditation) onToggleFavorite;
+  final Future<void> Function() onDetailReturned;
 
   const _SessionList({
-    required this.future,
+    required this.sessions,
     required this.emptyText,
-    required this.onRefresh,
+    required this.favoriteIds,
+    required this.onToggleFavorite,
+    required this.onDetailReturned,
     this.nudge,
   });
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<Meditation>>(
-      future: future,
-      builder: (_, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(
-              color: AppColors.accent,
-              strokeWidth: 2,
-            ),
-          );
-        }
-        if (snap.hasError) {
-          return _EmptyState(icon: Icons.error_outline, text: "We couldn't load your sessions. Try again in a moment.");
-        }
-        final sessions = snap.data ?? [];
-        if (sessions.isEmpty) {
-          return _EmptyState(icon: Icons.air, text: emptyText);
-        }
-        final showNudge = nudge != null;
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(28, 20, 28, 20),
-          itemCount: sessions.length + (showNudge ? 1 : 0),
-          separatorBuilder: (_, _) => const SizedBox(height: 12),
-          itemBuilder: (_, i) {
-            if (showNudge && i == 0) return _NudgeCard(text: nudge!);
-            final idx = showNudge ? i - 1 : i;
-            return _SessionCard(
-              session: sessions[idx],
-              onRefresh: onRefresh,
-            );
-          },
+    if (sessions.isEmpty) {
+      return _EmptyState(icon: Icons.air, text: emptyText);
+    }
+    final showNudge = nudge != null;
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(28, 20, 28, 20),
+      itemCount: sessions.length + (showNudge ? 1 : 0),
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (_, i) {
+        if (showNudge && i == 0) return _NudgeCard(text: nudge!);
+        final idx = showNudge ? i - 1 : i;
+        final m = sessions[idx];
+        return _SessionCard(
+          key: ValueKey(m.id),
+          session: m,
+          isFavorite: favoriteIds.contains(m.id),
+          onToggleFavorite: () => onToggleFavorite(m),
+          onDetailReturned: onDetailReturned,
         );
       },
     );
@@ -224,46 +310,30 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _SessionCard extends StatefulWidget {
+class _SessionCard extends StatelessWidget {
   final Meditation session;
-  final VoidCallback onRefresh;
+  final bool isFavorite;
+  final VoidCallback onToggleFavorite;
+  final Future<void> Function() onDetailReturned;
 
-  const _SessionCard({required this.session, required this.onRefresh});
+  const _SessionCard({
+    super.key,
+    required this.session,
+    required this.isFavorite,
+    required this.onToggleFavorite,
+    required this.onDetailReturned,
+  });
 
-  @override
-  State<_SessionCard> createState() => _SessionCardState();
-}
-
-class _SessionCardState extends State<_SessionCard> {
-  late bool _isFavorite;
-
-  @override
-  void initState() {
-    super.initState();
-    _isFavorite = widget.session.isFavorite;
+  Future<void> _openDetail(BuildContext context) async {
+    await context.push('/meditation?id=${session.id}');
+    await onDetailReturned();
   }
 
-  Future<void> _toggleFavorite() async {
-    final newValue = !_isFavorite;
-    setState(() => _isFavorite = newValue);
-    try {
-      final confirmed = await apiService.toggleFavorite(widget.session.id);
-      if (mounted) setState(() => _isFavorite = confirmed);
-    } catch (_) {
-      if (mounted) setState(() => _isFavorite = !newValue);
-    }
-  }
-
-  Future<void> _openDetail() async {
-    await context.push('/meditation?id=${widget.session.id}');
-    widget.onRefresh();
-  }
-
-  void _play() {
+  void _play(BuildContext context) {
     context.push(
-      '/player?audioUrl=${Uri.encodeComponent(widget.session.audioUrl)}'
-      '&id=${widget.session.id}'
-      '&duration=${widget.session.duration ?? 30}'
+      '/player?audioUrl=${Uri.encodeComponent(session.audioUrl)}'
+      '&id=${session.id}'
+      '&duration=${session.duration ?? 30}'
       '&replay=1',
     );
   }
@@ -271,10 +341,10 @@ class _SessionCardState extends State<_SessionCard> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final s = widget.session;
+    final s = session;
 
     return GestureDetector(
-      onTap: _openDetail,
+      onTap: () => _openDetail(context),
       child: Container(
         padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
         decoration: BoxDecoration(
@@ -317,16 +387,16 @@ class _SessionCardState extends State<_SessionCard> {
             ),
             IconButton(
               icon: Icon(
-                _isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                 size: 22,
-                color: _isFavorite ? AppColors.accent : AppColors.textSecondary,
+                color: isFavorite ? AppColors.accent : AppColors.textSecondary,
               ),
-              onPressed: _toggleFavorite,
+              onPressed: onToggleFavorite,
             ),
             IconButton(
               icon: const Icon(Icons.play_arrow_rounded, size: 26),
               color: AppColors.textSecondary,
-              onPressed: _play,
+              onPressed: () => _play(context),
             ),
           ],
         ),

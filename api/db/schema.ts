@@ -14,6 +14,13 @@ export const userProfiles = pgTable("user_profiles", {
   notificationHour: integer("notification_hour").default(8).notNull(),
   preferenceSummary: text("preference_summary"),
   preferenceSummaryUpdatedAt: timestamp("preference_summary_updated_at"),
+  // Denormalized stats. Recomputed in /listen on completed=true; safe to
+  // backfill at any time. Source of truth remains meditation_sessions.
+  currentStreak: integer("current_streak").default(0).notNull(),
+  totalSessions: integer("total_sessions").default(0).notNull(),
+  totalSeconds: integer("total_seconds").default(0).notNull(),
+  favoriteTimeBucket: varchar("favorite_time_bucket", { length: 16 }),
+  lastSessionAt: timestamp("last_session_at"),
   onboardedAt: timestamp("onboarded_at"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

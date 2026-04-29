@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { meditations, meditationSessions } from "@/db/schema";
 import { getUserId, isAuthError } from "@/lib/auth";
 import { logError } from "@/lib/log";
+import { recomputeUserStats } from "@/lib/stats";
 
 export const runtime = "nodejs";
 
@@ -42,6 +43,15 @@ export async function POST(
       listenedSeconds,
       completed,
     });
+
+    // /listen fires once per session (completion or early-exit), not per
+    // tick, so always recomputing is cheap. Partial listens still credit
+    // total_seconds; only completed=true extends the streak.
+    try {
+      await recomputeUserStats(userId);
+    } catch (err) {
+      logError("listen:recompute", err);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

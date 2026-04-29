@@ -233,6 +233,23 @@ class ApiService {
     return UserMe.fromJson(res.data as Map<String, dynamic>);
   }
 
+  // Combined home-screen payload — one round-trip in place of /me + /stats +
+  // /session/daily. Returns null on failure so callers can fall back to the
+  // individual endpoints.
+  Future<HomePayload?> getHome() async {
+    try {
+      final res = await _dio.get('/api/home');
+      final data = res.data as Map<String, dynamic>;
+      return HomePayload(
+        me: UserMe.fromJson(data['me'] as Map<String, dynamic>),
+        stats: UserStats.fromJson(data['stats'] as Map<String, dynamic>),
+        daily: data['daily'] as Map<String, dynamic>?,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> updateProfile({
     String? name,
     String? experienceLevel,
@@ -331,6 +348,14 @@ class UserMe {
       notificationHour: notificationHour ?? this.notificationHour,
     );
   }
+}
+
+class HomePayload {
+  final UserMe me;
+  final UserStats stats;
+  final Map<String, dynamic>? daily;
+
+  const HomePayload({required this.me, required this.stats, this.daily});
 }
 
 final apiService = ApiService();

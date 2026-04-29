@@ -13,6 +13,7 @@ class NotificationService {
 
   static const _notificationId = 1;
   static const _lastSessionKey = 'last_session_date';
+  static const _hourKey = 'notification_hour';
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -43,11 +44,14 @@ class NotificationService {
     return result ?? false;
   }
 
-  // Call this when a meditation session completes.
+  // Call this when a meditation session completes. Cancels today's reminder
+  // and reschedules the recurring notification starting tomorrow — iOS can't
+  // skip a single occurrence of a repeating trigger, so we rebuild it.
   Future<void> markSessionCompletedToday() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lastSessionKey, _todayKey());
-    await cancel(); // no need to remind them today
+    final hour = prefs.getInt(_hourKey) ?? 8;
+    await _scheduleStartingTomorrow(hour);
   }
 
   Future<bool> _didSessionToday() async {
@@ -59,16 +63,31 @@ class NotificationService {
 
   Future<void> scheduleIfNeeded({int hour = 8}) async {
     await initialize();
+    final clamped = (hour < 0 || hour > 23) ? 8 : hour;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_hourKey, clamped);
+
+    // If they already meditated today, start the recurring schedule tomorrow
+    // so we don't ping them again today.
+    final startTomorrow = await _didSessionToday();
+    await _scheduleAt(clamped, startTomorrow: startTomorrow);
+  }
+
+  Future<void> _scheduleStartingTomorrow(int hour) async {
+    await initialize();
+    final clamped = (hour < 0 || hour > 23) ? 8 : hour;
+    await _scheduleAt(clamped, startTomorrow: true);
+  }
+
+  Future<void> _scheduleAt(int hour, {required bool startTomorrow}) async {
     await _plugin.cancel(_notificationId);
 
-    // Don't remind if they already meditated today
-    if (await _didSessionToday()) return;
-
-    final clamped = (hour < 0 || hour > 23) ? 8 : hour;
     final now = tz.TZDateTime.now(tz.local);
-    var scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, clamped);
-    if (scheduled.isBefore(now)) {
-      scheduled = scheduled.add(const Duration(days: 1));
+    var scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour);
+    if (startTomorrow || !scheduled.isAfter(now)) {
+      scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour)
+          .add(const Duration(days: 1));
     }
 
     await _plugin.zonedSchedule(

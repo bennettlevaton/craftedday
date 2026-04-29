@@ -28,6 +28,38 @@ export function todayPacific(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 }
 
+export type DailySessionPayload = {
+  id: string;
+  title: string | null;
+  prompt: string;
+  audioUrl: string;
+  duration: number | null;
+  feeling: string | null;
+} | null;
+
+// Single source of truth for "today's daily session for this user". Both
+// /api/session/daily and /api/home read from this. Caller is responsible for
+// the subscription gate.
+export async function getDailySessionPayload(
+  userId: string,
+): Promise<DailySessionPayload> {
+  const date = todayPacific();
+  const rows = await db
+    .select({
+      id: meditations.id,
+      title: meditations.title,
+      prompt: meditations.prompt,
+      audioUrl: meditations.audioUrl,
+      duration: meditations.duration,
+      feeling: meditations.feeling,
+    })
+    .from(dailySessions)
+    .innerJoin(meditations, eq(dailySessions.meditationId, meditations.id))
+    .where(and(eq(dailySessions.userId, userId), eq(dailySessions.date, date)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 // Idempotent: returns { enqueued: false, reason } if the user already has a
 // daily session for today (or a pending job for it). Safe to call from
 // onboarding, the cron, or post-purchase hooks without duplicating work.

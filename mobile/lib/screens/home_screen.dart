@@ -41,11 +41,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadName();
     _loadDuration();
-    _loadDailySession();
+    _loadHome();
+  }
+
+  // One round-trip for me + stats + daily, then schedule notifications using
+  // the same `me` payload (no second /me call).
+  Future<void> _loadHome() async {
+    final home = await apiService.getHome();
+    if (home != null) {
+      if (mounted) {
+        setState(() {
+          _name = home.me.name;
+          _goals = home.me.primaryGoals;
+          _stats = home.stats;
+          if (home.daily != null) _dailySession = home.daily;
+        });
+      }
+      await _setupNotificationsWithHour(home.me.notificationHour);
+      return;
+    }
+    // Combined endpoint failed (older server / network) — fall back to the
+    // three individual endpoints.
+    _loadName();
     _loadStats();
+    _loadDailySession();
     _setupNotifications();
+  }
+
+  Future<void> _setupNotificationsWithHour(int hour) async {
+    final granted = await NotificationService.instance.requestPermission();
+    if (!granted) return;
+    await NotificationService.instance.scheduleIfNeeded(hour: hour);
   }
 
   @override
@@ -66,8 +93,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final location =
         _goRouter?.routerDelegate.currentConfiguration.uri.path;
     if (location == '/home') {
-      _loadStats();
-      _loadDailySession();
+      _refreshHome();
     }
   }
 
@@ -76,10 +102,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // App returning from background can be stale — daily card may have rolled
     // over and the streak may have advanced since we last fetched.
     if (state == AppLifecycleState.resumed && mounted && !_loading) {
-      _loadDailySession();
-      _loadStats();
-      _loadName();
+      _refreshHome();
     }
+  }
+
+  // Like _loadHome but skips the notification setup (already scheduled on
+  // initial load) and the fallback chain (best-effort refresh).
+  Future<void> _refreshHome() async {
+    final home = await apiService.getHome();
+    if (home == null || !mounted) return;
+    setState(() {
+      _name = home.me.name;
+      _goals = home.me.primaryGoals;
+      _stats = home.stats;
+      if (home.daily != null) _dailySession = home.daily;
+    });
   }
 
   Future<void> _loadStats() async {

@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { userProfiles } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { logError } from "@/lib/log";
-import { getOrCreateProfile } from "@/lib/user";
+import { getMePayload, getOrCreateProfile } from "@/lib/user";
 import { getUserId, isAuthError } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -31,17 +31,8 @@ type PatchBody = {
 export async function GET(req: NextRequest) {
   try {
     const userId = await getUserId(req);
-    const profile = await getOrCreateProfile(userId);
-
-    return NextResponse.json({
-      needsOnboarding: profile.onboardedAt === null,
-      name: profile.name,
-      experienceLevel: profile.experienceLevel,
-      primaryGoals: profile.primaryGoals ?? [],
-      primaryGoalCustom: profile.primaryGoalCustom,
-      voiceGender: profile.voiceGender,
-      notificationHour: profile.notificationHour ?? 8,
-    });
+    const payload = await getMePayload(userId);
+    return NextResponse.json(payload);
   } catch (err) {
     if (isAuthError(err)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

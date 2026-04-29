@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -383,7 +384,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     autofocus: false,
                     maxLines: 5,
                     minLines: 3,
-                    maxLength: 500,
+                    maxLength: 200,
                     enabled: !_loading,
                     style: textTheme.bodyLarge,
                     textCapitalization: TextCapitalization.sentences,
@@ -391,7 +392,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       hintText: _hintForGoals(_goals),
                       counterText: '',
                     ),
-                    textInputAction: TextInputAction.newline,
+                    textInputAction: TextInputAction.done,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.deny(RegExp(r'\n')),
+                    ],
+                    onSubmitted: (_) => FocusScope.of(context).unfocus(),
+                    scrollPadding: const EdgeInsets.fromLTRB(0, 0, 0, 220),
                   ),
                   const SizedBox(height: 12),
                   Align(

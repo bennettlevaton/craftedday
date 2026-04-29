@@ -56,6 +56,9 @@ export async function POST(
     if (whatHelped && whatHelped.some((t) => !VALID_HELPED.has(t))) {
       return NextResponse.json({ error: "invalid whatHelped" }, { status: 400 });
     }
+    if (feedback && feedback.length > 200) {
+      return NextResponse.json({ error: "feedback too long" }, { status: 400 });
+    }
 
     const t0 = Date.now();
     const since = () => Date.now() - t0;

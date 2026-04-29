@@ -185,8 +185,13 @@ class _MeditationDetailScreenState extends State<MeditationDetailScreen> {
                               controller: _notesController,
                               maxLines: 3,
                               minLines: 2,
+                              maxLength: 200,
                               style: textTheme.bodyLarge,
-                              decoration: const InputDecoration(hintText: 'Anything to note? (optional)'),
+                              textCapitalization: TextCapitalization.sentences,
+                              decoration: const InputDecoration(
+                                hintText: 'Anything to note? (optional)',
+                                counterText: '',
+                              ),
                             ),
                             const SizedBox(height: 20),
                             SizedBox(

@@ -48,6 +48,9 @@ export async function POST(req: NextRequest) {
     if (!prompt) {
       return NextResponse.json({ error: "prompt required" }, { status: 400 });
     }
+    if (prompt.length > 200) {
+      return NextResponse.json({ error: "prompt too long" }, { status: 400 });
+    }
 
     const userId = await getUserId(req);
 

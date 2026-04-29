@@ -120,8 +120,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               TextField(
                 controller: _nameController,
                 autofocus: true,
+                maxLength: 40,
                 style: textTheme.bodyLarge,
-                decoration: const InputDecoration(hintText: 'Your name'),
+                decoration: const InputDecoration(
+                  hintText: 'Your name',
+                  counterText: '',
+                ),
                 textInputAction: TextInputAction.done,
                 textCapitalization: TextCapitalization.words,
                 onSubmitted: (_) => FocusScope.of(context).unfocus(),
@@ -165,10 +169,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 TextField(
                   controller: _otherController,
                   focusNode: _otherFocus,
+                  maxLength: 80,
                   style: textTheme.bodyLarge,
                   decoration: const InputDecoration(
                     hintText: 'In your own words...',
+                    counterText: '',
                   ),
+                  textInputAction: TextInputAction.done,
+                  textCapitalization: TextCapitalization.sentences,
+                  onSubmitted: (_) => FocusScope.of(context).unfocus(),
                 ),
               ],
               const SizedBox(height: 32),

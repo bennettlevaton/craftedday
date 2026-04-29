@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const goals = body.primaryGoals;
     const customRaw = body.primaryGoalCustom?.trim();
 
-    if (!name || name.length < 1 || name.length > 128) {
+    if (!name || name.length < 1 || name.length > 40) {
       return NextResponse.json({ error: "invalid name" }, { status: 400 });
     }
     if (!experienceLevel || !VALID_LEVELS.has(experienceLevel)) {
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
 
     let primaryGoalCustom: string | null = null;
     if (goals.includes("other")) {
-      if (!customRaw || customRaw.length < 1 || customRaw.length > 256) {
+      if (!customRaw || customRaw.length < 1 || customRaw.length > 80) {
         return NextResponse.json(
           { error: "tell us what brings you here" },
           { status: 400 },

@@ -60,7 +60,7 @@ export async function PATCH(req: NextRequest) {
 
     if (body.name !== undefined) {
       const name = body.name.trim();
-      if (name.length < 1 || name.length > 128) {
+      if (name.length < 1 || name.length > 40) {
         return NextResponse.json({ error: "invalid name" }, { status: 400 });
       }
       updates.name = name;
@@ -97,7 +97,7 @@ export async function PATCH(req: NextRequest) {
 
       if (goals.includes("other")) {
         const custom = body.primaryGoalCustom?.trim();
-        if (!custom || custom.length < 1 || custom.length > 256) {
+        if (!custom || custom.length < 1 || custom.length > 80) {
           return NextResponse.json(
             { error: "tell us what brings you here" },
             { status: 400 },

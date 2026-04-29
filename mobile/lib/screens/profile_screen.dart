@@ -612,8 +612,15 @@ class _NameSheetState extends State<_NameSheet> {
       child: TextField(
         controller: _c,
         autofocus: true,
+        maxLength: 40,
         style: Theme.of(context).textTheme.bodyLarge,
-        decoration: const InputDecoration(hintText: 'Your name'),
+        decoration: const InputDecoration(
+          hintText: 'Your name',
+          counterText: '',
+        ),
+        textInputAction: TextInputAction.done,
+        textCapitalization: TextCapitalization.words,
+        onSubmitted: (_) => FocusScope.of(context).unfocus(),
       ),
     );
   }
@@ -763,10 +770,15 @@ class _GoalsSheetState extends State<_GoalsSheet> {
             TextField(
               controller: _other,
               focusNode: _otherFocus,
+              maxLength: 80,
               style: Theme.of(context).textTheme.bodyLarge,
               decoration: const InputDecoration(
                 hintText: 'In your own words...',
+                counterText: '',
               ),
+              textInputAction: TextInputAction.done,
+              textCapitalization: TextCapitalization.sentences,
+              onSubmitted: (_) => FocusScope.of(context).unfocus(),
             ),
           ],
         ],

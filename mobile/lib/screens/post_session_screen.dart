@@ -155,12 +155,14 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
                 TextField(
                   controller: _notesController,
                   maxLines: 1,
+                  maxLength: 200,
                   style: textTheme.bodyLarge,
                   textInputAction: TextInputAction.done,
                   textCapitalization: TextCapitalization.sentences,
                   onSubmitted: (_) => FocusScope.of(context).unfocus(),
                   decoration: const InputDecoration(
                     hintText: 'Anything to note? (optional)',
+                    counterText: '',
                   ),
                 ),
               ],

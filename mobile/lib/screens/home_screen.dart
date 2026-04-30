@@ -30,7 +30,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _loading = false;
   String? _name;
   List<String> _goals = const [];
-  int _durationSeconds = 600;
+  int _durationSeconds = 300;
   Map<String, dynamic>? _dailySession; // 10 min default
   UserStats? _stats;
   Timer? _abandonTimer;

@@ -220,6 +220,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (prompt.isEmpty || _loading) return;
 
     _abandoned = false;
+    FocusScope.of(context).unfocus();
     setState(() => _loading = true);
     _controller.clear();
     MusicService.instance.start();

@@ -160,7 +160,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
 
               // Value props
               ...[
-                'A fresh 10-min session crafted for you every morning',
+                'A fresh 5-min session crafted for you every morning',
                 '150 min/month of custom sessions, any time',
                 'Personalized to what works for you over time',
               ].map((line) => Padding(

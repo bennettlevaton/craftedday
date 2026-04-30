@@ -401,7 +401,7 @@ Key idea: **Inworld only does pure speech. We own all silence.** Break tags neve
 
 ### Env / config knobs
 
-- `MEDITATION_TARGET_SECONDS` — session length. Local = 30 for dev, 600 in prod.
+- Session length is set per-request, not via env. Daily sessions are fixed at 5 min (`DEFAULT_DURATION = 300` in `api/lib/daily.ts`). Custom sessions default to 10 min and are user-selectable on the home screen, clamped 30–600s in `api/app/api/meditation/generate/route.ts`.
 - `TTS_CONCURRENCY` — Inworld parallelism cap (default 10; full self-serve plan).
 - Voice IDs in `api/lib/inworld.ts`: `INWORLD_VOICES.female` (Grace clone), `INWORLD_VOICES.male` (Damon — currently deprecated, toggle hidden in profile).
 
@@ -418,7 +418,6 @@ Daily session date keys use `America/Los_Angeles` so PT users don't lose "today"
 - **Worker's daily-session date inconsistency.** `worker/route.ts:todayEst()` uses `America/New_York` while `lib/daily.ts:todayPacific()` uses LA. Since cron fires at midnight PT (3am ET) and worker completes within a few minutes, both resolve to the same date in practice — but they should be unified to one timezone helper to prevent latent drift.
 
 **Deferred (intentional):**
-- Variable session duration (currently fixed at `MEDITATION_TARGET_SECONDS`)
 - Streaming audio
 - Background music mix during meditation
 - Voice selection UI (toggle hidden — defaults to female Grace clone)

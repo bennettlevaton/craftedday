@@ -18,7 +18,7 @@ Future<void> main() async {
   // lock-screen + Control Center playback controls. Must run before any
   // AudioPlayer is constructed.
   await JustAudioBackground.init(
-    androidNotificationChannelId: 'com.craftedday.craftedday.audio',
+    androidNotificationChannelId: 'com.bbp.craftedday.audio',
     androidNotificationChannelName: 'Meditation playback',
     androidNotificationOngoing: true,
   );
